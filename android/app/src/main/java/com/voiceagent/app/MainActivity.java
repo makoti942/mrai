@@ -755,6 +755,12 @@ public class MainActivity extends Activity {
                     else if (code == SpeechRecognizer.ERROR_CLIENT) err = "client";
                     errorCount++;
                     addLog("Recognizer error: " + err + " (#" + errorCount + ")");
+                    if (errorCount > 10) {
+                        addLog("Too many errors — stopping voice retry. Use text input instead.");
+                        updateNotif("Voice unavailable — type commands");
+                        recognizerError = true;
+                        return;
+                    }
                     long delay = Math.min(errorCount * 1000, 5000);
                     if (!ttsSpeaking) handler.postDelayed(() -> startListening(), delay);
                 }
@@ -775,7 +781,7 @@ public class MainActivity extends Activity {
         }
 
         private void startListening() {
-            if (ttsSpeaking || isListening || recognizer == null) return;
+            if (ttsSpeaking || isListening || recognizer == null || recognizerError) return;
             try {
                 Intent intent = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
                 intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
@@ -1280,34 +1286,14 @@ public class MainActivity extends Activity {
                 return new Intent(android.provider.MediaStore.ACTION_IMAGE_CAPTURE);
             if (name.contains("dialer") || name.contains("phone") || name.contains("simu"))
                 return new Intent(Intent.ACTION_DIAL, Uri.parse("tel:"));
-            if (name.contains("browser") || name.contains("chrome"))
-                return new Intent(Intent.ACTION_VIEW, Uri.parse("https://google.com"));
             if (name.contains("calculator") || name.contains("kikokotoo") || name.contains("calc"))
                 return new Intent("android.intent.action.CALCULATOR");
             if (name.contains("calendar") || name.contains("kalenda"))
                 return new Intent(Intent.ACTION_VIEW, Uri.parse("content://com.android.calendar/time/"));
             if (name.contains("maps") || name.contains("ramani"))
                 return new Intent(Intent.ACTION_VIEW, Uri.parse("geo:0,0?q="));
-            if (name.contains("youtube"))
-                return new Intent(Intent.ACTION_VIEW).setPackage("com.google.android.youtube");
-            if (name.contains("whatsapp") || name.contains("whatasapp") || name.contains("watsap"))
-                return new Intent(Intent.ACTION_VIEW).setPackage("com.whatsapp");
-            if (name.contains("gallery") || name.contains("picha") || name.contains("photos"))
+            if (name.contains("gallery") || name.contains("picha"))
                 return new Intent(Intent.ACTION_VIEW).setType("image/*");
-            if (name.contains("snapchat") || name.contains("snap"))
-                return new Intent(Intent.ACTION_VIEW).setPackage("com.snapchat.android");
-            if (name.contains("instagram") || name.contains("ig") || name.contains("insta"))
-                return new Intent(Intent.ACTION_VIEW).setPackage("com.instagram.android");
-            if (name.contains("telegram"))
-                return new Intent(Intent.ACTION_VIEW).setPackage("org.telegram.messenger");
-            if (name.contains("tiktok"))
-                return new Intent(Intent.ACTION_VIEW).setPackage("com.zhiliaoapp.musically");
-            if (name.contains("facebook") || name.contains("fb") || name.contains("face"))
-                return new Intent(Intent.ACTION_VIEW).setPackage("com.facebook.katana");
-            if (name.contains("twitter") || name.contains("x ") || name.contains("x.com"))
-                return new Intent(Intent.ACTION_VIEW).setPackage("com.twitter.android");
-            if (name.contains("gmail") || name.contains("email") || name.contains("mail"))
-                return new Intent(Intent.ACTION_VIEW).setPackage("com.google.android.gm");
             return null;
         }
 
