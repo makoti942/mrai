@@ -22,13 +22,17 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
+      - name: Install required SDK components
+        run: |
+          yes | sdkmanager --install "platforms;android-34" "build-tools;34.0.0" "platform-tools" 2>&1 | tail -5
+
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
         with:
           gradle-version: 8.5
 
       - name: Build debug APK
-        run: gradle assembleDebug --no-daemon
+        run: gradle assembleDebug --no-daemon --stacktrace
         working-directory: android
 
       - name: Upload debug APK
@@ -39,7 +43,7 @@ jobs:
           if-no-files-found: error
 
       - name: Build release APK (unsigned)
-        run: gradle assembleRelease --no-daemon
+        run: gradle assembleRelease --no-daemon --stacktrace
         working-directory: android
         continue-on-error: true
 
