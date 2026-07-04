@@ -1,0 +1,26 @@
+buildscript {
+    ext {
+        compileSdk = 34
+        minSdk = 26
+        targetSdk = 34
+        agpVersion = '8.2.0'
+    }
+    repositories {
+        google()
+        mavenCentral()
+    }
+    dependencies {
+        classpath "com.android.tools.build:gradle:$agpVersion"
+    }
+}
+
+allprojects {
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
+
+tasks.register('clean', Delete) {
+    delete rootProject.layout.buildDirectory
+}

@@ -1,0 +1,1398 @@
+package com.voiceagent.app;
+
+import android.Manifest;
+import android.app.Activity;
+import android.app.Notification;
+import android.app.NotificationChannel;
+import android.app.NotificationManager;
+import android.app.PendingIntent;
+import android.app.Service;
+import android.bluetooth.BluetoothAdapter;
+import android.content.BroadcastReceiver;
+import android.content.ContentResolver;
+import android.content.Context;
+import android.content.Intent;
+import android.content.IntentFilter;
+import android.content.pm.PackageManager;
+import android.content.pm.ResolveInfo;
+import android.database.Cursor;
+import android.hardware.camera2.CameraAccessException;
+import android.hardware.camera2.CameraCharacteristics;
+import android.hardware.camera2.CameraManager;
+import android.media.AudioManager;
+import android.net.Uri;
+import android.net.wifi.WifiManager;
+import android.os.Build;
+import android.os.Bundle;
+import android.os.Handler;
+import android.os.IBinder;
+import android.os.Looper;
+import android.os.PowerManager;
+import android.os.VibrationEffect;
+import android.os.Vibrator;
+import android.provider.ContactsContract;
+import android.provider.Settings;
+import android.speech.RecognitionListener;
+import android.speech.RecognizerIntent;
+import android.speech.SpeechRecognizer;
+import android.speech.tts.TextToSpeech;
+import android.speech.tts.UtteranceProgressListener;
+import android.util.Log;
+import android.view.WindowManager;
+import android.widget.Toast;
+
+import androidx.annotation.Nullable;
+import androidx.core.app.ActivityCompat;
+import androidx.core.app.NotificationCompat;
+import androidx.core.content.ContextCompat;
+
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Random;
+import java.util.Set;
+import java.util.UUID;
+
+public class MainActivity extends Activity {
+
+    private static final String TAG = "VoiceAgent";
+    private static final int REQ_PERMISSIONS = 1001;
+
+    private static final String[] PERMS = {
+            Manifest.permission.RECORD_AUDIO,
+            Manifest.permission.CAMERA,
+            Manifest.permission.CALL_PHONE,
+            Manifest.permission.SEND_SMS,
+            Manifest.permission.READ_SMS,
+            Manifest.permission.RECEIVE_SMS,
+            Manifest.permission.MODIFY_AUDIO_SETTINGS,
+            Manifest.permission.ACCESS_WIFI_STATE,
+            Manifest.permission.CHANGE_WIFI_STATE,
+            Manifest.permission.BLUETOOTH,
+            Manifest.permission.BLUETOOTH_ADMIN,
+            Manifest.permission.BLUETOOTH_CONNECT,
+            Manifest.permission.BLUETOOTH_SCAN,
+            Manifest.permission.POST_NOTIFICATIONS,
+            Manifest.permission.VIBRATE,
+            Manifest.permission.WAKE_LOCK,
+            Manifest.permission.FOREGROUND_SERVICE,
+            Manifest.permission.SYSTEM_ALERT_WINDOW,
+            Manifest.permission.READ_EXTERNAL_STORAGE,
+            Manifest.permission.WRITE_EXTERNAL_STORAGE,
+            Manifest.permission.READ_CONTACTS,
+            Manifest.permission.READ_CALL_LOG,
+            Manifest.permission.ACCESS_FINE_LOCATION,
+            Manifest.permission.ACCESS_COARSE_LOCATION,
+            Manifest.permission.SET_ALARM,
+            Manifest.permission.USE_SIP,
+            Manifest.permission.ANSWER_PHONE_CALLS,
+            Manifest.permission.BIND_NOTIFICATION_LISTENER_SERVICE,
+    };
+
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        requestPermissionsIfNeeded();
+    }
+
+    private void requestPermissionsIfNeeded() {
+        ArrayList<String> needed = new ArrayList<>();
+        for (String p : PERMS) {
+            if (ContextCompat.checkSelfPermission(this, p) != PackageManager.PERMISSION_GRANTED) {
+                needed.add(p);
+            }
+        }
+        if (!needed.isEmpty()) {
+            ActivityCompat.requestPermissions(this, needed.toArray(new String[0]), REQ_PERMISSIONS);
+        } else {
+            startVoiceService();
+        }
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int code, String[] perms, int[] grants) {
+        super.onRequestPermissionsResult(code, perms, grants);
+        startVoiceService();
+    }
+
+    private void startVoiceService() {
+        Intent intent = new Intent(this, VoiceCommandService.class);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            startForegroundService(intent);
+        } else {
+            startService(intent);
+        }
+        Toast.makeText(this, "VoiceAgent active. Say \"hello makoti\"", Toast.LENGTH_LONG).show();
+        finish();
+    }
+
+    // ──────────────── BOOT RECEIVER ────────────────
+
+    public static class BootReceiver extends BroadcastReceiver {
+        @Override
+        public void onReceive(Context ctx, Intent intent) {
+            if (Intent.ACTION_BOOT_COMPLETED.equals(intent.getAction())) {
+                Log.d(TAG, "Boot – starting VoiceAgent");
+                Intent svc = new Intent(ctx, VoiceCommandService.class);
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    ctx.startForegroundService(svc);
+                } else {
+                    ctx.startService(svc);
+                }
+            }
+        }
+    }
+
+    // ──────────────── SEMANTIC NLP ENGINE ────────────────
+
+    static class SemanticEngine {
+
+        // Character n-gram set for similarity computation
+        static Set<String> charNGrams(String s, int n) {
+            Set<String> ngrams = new HashSet<>();
+            String padded = " " + s.toLowerCase().trim() + " ";
+            for (int i = 0; i + n <= padded.length(); i++) {
+                ngrams.add(padded.substring(i, i + n));
+            }
+            return ngrams;
+        }
+
+        static double jaccard(Set<String> a, Set<String> b) {
+            if (a.isEmpty() && b.isEmpty()) return 0;
+            Set<String> inter = new HashSet<>(a);
+            inter.retainAll(b);
+            Set<String> union = new HashSet<>(a);
+            union.addAll(b);
+            return (double) inter.size() / union.size();
+        }
+
+        // n-gram similarity at character level (language agnostic)
+        static double charNGramSimilarity(String s1, String s2) {
+            if (s1 == null || s2 == null) return 0;
+            String t1 = s1.toLowerCase().trim();
+            String t2 = s2.toLowerCase().trim();
+            if (t1.equals(t2)) return 1.0;
+            if (t1.isEmpty() || t2.isEmpty()) return 0;
+            // Weighted combination of 2-gram and 3-gram
+            double sim2 = jaccard(charNGrams(t1, 2), charNGrams(t2, 2));
+            double sim3 = jaccard(charNGrams(t1, 3), charNGrams(t2, 3));
+            double sim4 = jaccard(charNGrams(t1, 4), charNGrams(t2, 4));
+            return 0.2 * sim2 + 0.5 * sim3 + 0.3 * sim4;
+        }
+
+        // Intent templates with semantic fields (NOT hardcoded keywords)
+        // Each template has: id, a list of example phrases, and required semantic markers
+        static class IntentTemplate {
+            String id;
+            List<String> examples;
+            double threshold;
+
+            IntentTemplate(String id, List<String> examples, double threshold) {
+                this.id = id;
+                this.examples = examples;
+                this.threshold = threshold;
+            }
+        }
+
+        static final List<IntentTemplate> TEMPLATES = Arrays.asList(
+            new IntentTemplate("torch_on", Arrays.asList(
+                "turn on the flashlight", "switch on the torch", "i need light",
+                "washa taa", "mwasha taa", "fungua taa", "taa washa",
+                "turn on the flash", "flashlight on", "light please"
+            ), 0.35),
+            new IntentTemplate("torch_off", Arrays.asList(
+                "turn off the flashlight", "switch off the torch", "no more light",
+                "zima taa", "funga taa", "taa zima", "flashlight off"
+            ), 0.35),
+            new IntentTemplate("volume_up", Arrays.asList(
+                "increase volume", "make it louder", "turn it up",
+                "ongeza sauti", "paza sauti", "kubaza sauti", "sauti juu",
+                "raise the volume", "volume up"
+            ), 0.30),
+            new IntentTemplate("volume_down", Arrays.asList(
+                "decrease volume", "make it quieter", "turn it down",
+                "punguza sauti", "teremsha sauti", "nyamazisha", "sauti chini",
+                "lower the volume", "volume down"
+            ), 0.30),
+            new IntentTemplate("volume_set", Arrays.asList(
+                "set volume to", "volume", "change volume to",
+                "weka sauti", "sauti"
+            ), 0.25),
+            new IntentTemplate("open_app", Arrays.asList(
+                "open app", "launch", "start", "open",
+                "fungua", "zindua", "anzisha"
+            ), 0.20),
+            new IntentTemplate("call", Arrays.asList(
+                "call", "dial", "phone", "make a call",
+                "piga simu", "piga", "mpigie", "simu"
+            ), 0.20),
+            new IntentTemplate("sms", Arrays.asList(
+                "send message", "send text", "text", "message",
+                "tuma ujumbe", "tuma sms", "sms", "ujumbe"
+            ), 0.25),
+            new IntentTemplate("read_notifications", Arrays.asList(
+                "read notifications", "check notifications", "what are my notifications",
+                "soma taarifa", "soma arifa", "taarifa zangu", "arifa",
+                "show notifications", "notification"
+            ), 0.30),
+            new IntentTemplate("find_contact", Arrays.asList(
+                "find contact", "search contact", "lookup", "find",
+                "tafuta", "tafuta anwani", "anwani ya", "number for",
+                "phone number of", "contact"
+            ), 0.25),
+            new IntentTemplate("read_contacts", Arrays.asList(
+                "show my contacts", "list contacts", "all contacts",
+                "onyesha anwani", "orodhesha anwani", "anwani zangu"
+            ), 0.30),
+            new IntentTemplate("reply_message", Arrays.asList(
+                "reply", "reply to", "reply message", "reply text",
+                "jibu", "jibu ujumbe", "jibu sms"
+            ), 0.30),
+            new IntentTemplate("screenshot", Arrays.asList(
+                "take screenshot", "capture screen", "screenshot",
+                "piga screenshot", "picha ya skrini", "chukua skrini"
+            ), 0.30),
+            new IntentTemplate("wifi_on", Arrays.asList(
+                "turn on wifi", "enable wifi", "wifi on",
+                "washa wifi", "fungua wifi", "wifi washa"
+            ), 0.30),
+            new IntentTemplate("wifi_off", Arrays.asList(
+                "turn off wifi", "disable wifi", "wifi off",
+                "zima wifi", "funga wifi", "wifi zima"
+            ), 0.30),
+            new IntentTemplate("bluetooth_on", Arrays.asList(
+                "turn on bluetooth", "enable bluetooth",
+                "washa bluetooth", "fungua bluetooth"
+            ), 0.30),
+            new IntentTemplate("bluetooth_off", Arrays.asList(
+                "turn off bluetooth", "disable bluetooth",
+                "zima bluetooth", "funga bluetooth"
+            ), 0.30),
+            new IntentTemplate("dnd_on", Arrays.asList(
+                "do not disturb", "silent mode", "quiet mode",
+                "usijali", "kimya", "hali ya kimya",
+                "turn on silent", "dnd on"
+            ), 0.25),
+            new IntentTemplate("dnd_off", Arrays.asList(
+                "turn off silent", "turn off do not disturb",
+                "zima kimya", "dnd off"
+            ), 0.25),
+            new IntentTemplate("take_photo", Arrays.asList(
+                "take a picture", "take photo", "capture photo",
+                "piga picha", "chukua picha", "picha",
+                "open camera", "camera"
+            ), 0.25),
+            new IntentTemplate("alarm", Arrays.asList(
+                "set alarm", "set an alarm", "alarm",
+                "weka alarmu", "alarmu", "kengele"
+            ), 0.25),
+            new IntentTemplate("greeting", Arrays.asList(
+                "hello", "hi", "hey", "good morning", "good evening",
+                "jambo", "habari", "sasa", "mambo", "vipi",
+                "how are you", "what's up", "niaje"
+            ), 0.30),
+            new IntentTemplate("thanks", Arrays.asList(
+                "thank you", "thanks", "thanks a lot",
+                "asante", "asante sana", "shukran"
+            ), 0.35),
+            new IntentTemplate("goodbye", Arrays.asList(
+                "goodbye", "bye", "see you", "see you later",
+                "kwa heri", "baadaye", "tuonane"
+            ), 0.35),
+            new IntentTemplate("time", Arrays.asList(
+                "what time is it", "tell me the time", "current time",
+                "saa ngapi", "saa", "wakati"
+            ), 0.30),
+            new IntentTemplate("date", Arrays.asList(
+                "what date is it", "what day is it", "today's date",
+                "tarehe gani", "tarehe", "siku gani"
+            ), 0.30),
+            new IntentTemplate("battery", Arrays.asList(
+                "battery level", "check battery", "battery percentage",
+                "betri", "nguvu ya betri", "asilimia ya betri",
+                "charge level"
+            ), 0.30)
+        );
+
+        static class IntentResult {
+            String id;
+            double score;
+            String rawText;
+
+            IntentResult(String id, double score, String rawText) {
+                this.id = id;
+                this.score = score;
+                this.rawText = rawText;
+            }
+        }
+
+        // Find best intent using n-gram similarity against templates
+        static IntentResult resolve(String text) {
+            if (text == null || text.trim().isEmpty()) return null;
+            String input = text.toLowerCase().trim();
+
+            IntentResult best = null;
+            for (IntentTemplate tpl : TEMPLATES) {
+                double maxSim = 0;
+                for (String ex : tpl.examples) {
+                    double sim = charNGramSimilarity(input, ex);
+                    // Bonus for word overlap
+                    String[] inputWords = input.split("\\s+");
+                    String[] exWords = ex.toLowerCase().split("\\s+");
+                    int overlap = 0;
+                    for (String iw : inputWords) {
+                        for (String ew : exWords) {
+                            if (iw.length() > 2 && ew.length() > 2 &&
+                                    (iw.contains(ew) || ew.contains(iw) ||
+                                     charNGramSimilarity(iw, ew) > 0.6)) {
+                                overlap++;
+                                break;
+                            }
+                        }
+                    }
+                    double wordOverlap = exWords.length > 0
+                            ? (double) overlap / exWords.length : 0;
+                    double combined = 0.6 * sim + 0.4 * wordOverlap;
+                    if (combined > maxSim) maxSim = combined;
+                }
+                if (maxSim >= tpl.threshold && (best == null || maxSim > best.score)) {
+                    best = new IntentResult(tpl.id, maxSim, input);
+                }
+            }
+            return best;
+        }
+    }
+
+    // ──────────────── CONVERSATION MANAGER ────────────────
+
+    static class ConversationManager {
+        String lastIntent;
+        String lastResponse;
+        String lastNumber;
+        String lastContact;
+        String lastMessage;
+        boolean awaitingConfirmation;
+        boolean awaitingContactName;
+        boolean awaitingMessageText;
+        boolean awaitingNumber;
+        boolean awaitingAppName;
+        boolean isGreeted;
+        int turnCount;
+        final Random random = new Random();
+
+        final String[] greetings = {
+            "Hey! What can I help you with?",
+            "Yes? I'm listening.",
+            "Hi! What do you need?",
+            "Hello! Tell me what to do.",
+            "Habari! How can I help?",
+            "Nisaidieje? What can I do for you?"
+        };
+
+        final String[] thanksReplies = {
+            "You're welcome!", "Anytime!", "Happy to help!",
+            "Welcome!", "Karibu!", "No problem!"
+        };
+
+        final String[] goodbyeReplies = {
+            "Goodbye!", "See you later!", "Bye!",
+            "Kwa heri!", "Baadaye!", "Take care!"
+        };
+
+        final String[] fallbacks = {
+            "I'm not sure what you mean. Can you say it differently?",
+            "I didn't understand. Try again?",
+            "Say that again? I want to help.",
+            "Sijaelewa. Tafadhali sema tena.",
+            "I'm still learning. Can you rephrase that?",
+            "Tell me more clearly what you need."
+        };
+
+        String getGreeting() {
+            isGreeted = true;
+            return greetings[random.nextInt(greetings.length)];
+        }
+
+        String getThanks() {
+            return thanksReplies[random.nextInt(thanksReplies.length)];
+        }
+
+        String getGoodbye() {
+            return goodbyeReplies[random.nextInt(goodbyeReplies.length)];
+        }
+
+        String getFallback() {
+            return fallbacks[random.nextInt(fallbacks.length)];
+        }
+
+        void reset() {
+            lastIntent = null;
+            lastResponse = null;
+            lastNumber = null;
+            lastContact = null;
+            lastMessage = null;
+            awaitingConfirmation = false;
+            awaitingContactName = false;
+            awaitingMessageText = false;
+            awaitingNumber = false;
+            awaitingAppName = false;
+        }
+
+        void startFresh() {
+            reset();
+            isGreeted = false;
+            turnCount = 0;
+        }
+    }
+
+    // ──────────────── FOREGROUND VOICE SERVICE ────────────────
+
+    public static class VoiceCommandService extends Service {
+
+        private static final String CHAN_ID = "voiceagent_channel";
+        private static final int NOTIF_ID = 9001;
+        private static final long WAKE_TIMEOUT_MS = 8000;
+
+        private SpeechRecognizer recognizer;
+        private TextToSpeech tts;
+        private AudioManager audioManager;
+        private CameraManager cameraManager;
+        private WifiManager wifiManager;
+        private NotificationManager notificationManager;
+        private Vibrator vibrator;
+        private PowerManager.WakeLock wakeLock;
+        private ContentResolver contentResolver;
+
+        private String torchCameraId;
+        private boolean torchOn;
+        private boolean isListening = false;
+        private boolean wakeWordDetected = false;
+        private boolean commandMode = false;
+        private boolean ttsSpeaking = false;
+        private int maxVolume;
+
+        private final Handler handler = new Handler(Looper.getMainLooper());
+        private Runnable wakeTimeoutRunnable;
+        private final ConversationManager conv = new ConversationManager();
+
+        @Override
+        public void onCreate() {
+            super.onCreate();
+            Log.d(TAG, "Service creating");
+            createChannel();
+            startForeground(NOTIF_ID, buildNotif("Active"));
+
+            audioManager = (AudioManager) getSystemService(AUDIO_SERVICE);
+            cameraManager = (CameraManager) getSystemService(CAMERA_SERVICE);
+            wifiManager = (WifiManager) getApplicationContext().getSystemService(WIFI_SERVICE);
+            notificationManager = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
+            vibrator = (Vibrator) getSystemService(VIBRATOR_SERVICE);
+            contentResolver = getContentResolver();
+            maxVolume = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
+
+            PowerManager pm = (PowerManager) getSystemService(POWER_SERVICE);
+            wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, TAG + ":lock");
+            wakeLock.acquire(10 * 60 * 1000L);
+
+            findTorch();
+            initTts();
+            initRecognizer();
+            registerBootReceiver();
+        }
+
+        private void registerBootReceiver() {
+            try {
+                registerReceiver(new BootReceiver(), new IntentFilter(Intent.ACTION_BOOT_COMPLETED));
+            } catch (Exception e) { Log.w(TAG, "Boot reg fail", e); }
+        }
+
+        private void createChannel() {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                NotificationChannel ch = new NotificationChannel(
+                        CHAN_ID, "Voice Agent", NotificationManager.IMPORTANCE_LOW);
+                ch.setShowBadge(false);
+                getSystemService(NotificationManager.class).createNotificationChannel(ch);
+            }
+        }
+
+        private Notification buildNotif(String text) {
+            Intent open = new Intent(this, MainActivity.class);
+            PendingIntent pi = PendingIntent.getActivity(
+                    this, 0, open,
+                    PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
+            return new NotificationCompat.Builder(this, CHAN_ID)
+                    .setContentTitle("VoiceAgent")
+                    .setContentText(text)
+                    .setSmallIcon(android.R.drawable.ic_btn_speak_now)
+                    .setContentIntent(pi)
+                    .setOngoing(true)
+                    .setPriority(NotificationCompat.PRIORITY_LOW)
+                    .build();
+        }
+
+        private void updateNotif(String text) {
+            getSystemService(NotificationManager.class).notify(NOTIF_ID, buildNotif(text));
+        }
+
+        // ─── Torch ──────────────────────────────────────────
+
+        private void findTorch() {
+            try {
+                for (String id : cameraManager.getCameraIdList()) {
+                    CameraCharacteristics cc = cameraManager.getCameraCharacteristics(id);
+                    Boolean flash = cc.get(CameraCharacteristics.FLASH_INFO_AVAILABLE);
+                    Integer facing = cc.get(CameraCharacteristics.LENS_FACING);
+                    if (flash != null && flash && facing != null
+                            && facing == CameraCharacteristics.LENS_FACING_BACK) {
+                        torchCameraId = id; return;
+                    }
+                }
+                for (String id : cameraManager.getCameraIdList()) {
+                    CameraCharacteristics cc = cameraManager.getCameraCharacteristics(id);
+                    Boolean flash = cc.get(CameraCharacteristics.FLASH_INFO_AVAILABLE);
+                    if (flash != null && flash) { torchCameraId = id; return; }
+                }
+            } catch (CameraAccessException e) { Log.e(TAG, "Camera error", e); }
+        }
+
+        // ─── TTS ────────────────────────────────────────────
+
+        private void initTts() {
+            tts = new TextToSpeech(this, status -> {
+                if (status == TextToSpeech.SUCCESS) {
+                    tts.setLanguage(Locale.ENGLISH);
+                    tts.setSpeechRate(0.95f);
+                    tts.setPitch(1.0f);
+                    tts.setOnUtteranceProgressListener(new UtteranceProgressListener() {
+                        @Override public void onStart(String uid) {
+                            ttsSpeaking = true;
+                            updateNotif("Speaking...");
+                            if (recognizer != null) { try { recognizer.stop(); } catch (Exception e) {} }
+                        }
+                        @Override public void onDone(String uid) {
+                            ttsSpeaking = false;
+                            updateNotif("Listening...");
+                            handler.postDelayed(() -> startListening(), 150);
+                        }
+                        @Override public void onError(String uid) {
+                            ttsSpeaking = false;
+                            updateNotif("Listening...");
+                            handler.postDelayed(() -> startListening(), 150);
+                        }
+                    });
+                    startListening();
+                }
+            });
+        }
+
+        private void speak(String text) {
+            if (tts == null || text == null || text.isEmpty()) return;
+            String uid = UUID.randomUUID().toString();
+            Bundle b = new Bundle();
+            tts.speak(text, TextToSpeech.QUEUE_FLUSH, b, uid);
+            conv.lastResponse = text;
+            Log.d(TAG, "TTS: " + text);
+        }
+
+        // ─── Speech Recognizer ─────────────────────────────
+
+        private void initRecognizer() {
+            recognizer = SpeechRecognizer.createSpeechRecognizer(this);
+            recognizer.setRecognitionListener(new RecognitionListener() {
+                @Override public void onReadyForSpeech(Bundle p) { isListening = true; updateNotif("Listening..."); }
+                @Override public void onBeginningOfSpeech() { updateNotif("Heard you"); }
+                @Override public void onRmsChanged(float rms) {}
+                @Override public void onBufferReceived(byte[] buf) {}
+                @Override public void onEndOfSpeech() { isListening = false; updateNotif("Processing..."); }
+                @Override public void onError(int code) {
+                    isListening = false;
+                    if (!ttsSpeaking) handler.postDelayed(() -> startListening(), 100);
+                }
+                @Override public void onResults(Bundle res) {
+                    ArrayList<String> matches = res.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION);
+                    if (matches != null && !matches.isEmpty()) {
+                        processTranscript(matches.get(0).toLowerCase().trim());
+                    } else {
+                        if (!ttsSpeaking) startListening();
+                    }
+                }
+                @Override public void onPartialResults(Bundle res) {}
+                @Override public void onEvent(int type, Bundle p) {}
+            });
+            startListening();
+        }
+
+        private void startListening() {
+            if (ttsSpeaking || isListening) return;
+            try {
+                Intent intent = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
+                intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
+                intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE, "sw-TZ");
+                intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, "sw-TZ,en-US");
+                intent.putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, getPackageName());
+                intent.putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, false);
+                intent.putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 5);
+                intent.putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 200);
+                intent.putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 600);
+                recognizer.startListening(intent);
+                isListening = true;
+                updateNotif("Listening...");
+            } catch (Exception e) {
+                Log.e(TAG, "Start fail", e);
+                handler.postDelayed(() -> startListening(), 1000);
+            }
+        }
+
+        // ─── MAIN PROCESSING ────────────────────────────────
+
+        private void processTranscript(String text) {
+            Log.d(TAG, "Text: " + text);
+            if (text.isEmpty()) { if (!ttsSpeaking) startListening(); return; }
+
+            conv.turnCount++;
+
+            // ── Wake word detection ──
+            if (!wakeWordDetected && !commandMode) {
+                SemanticEngine.IntentResult sem = SemanticEngine.resolve(text);
+                boolean isGreeting = sem != null && "greeting".equals(sem.id) && sem.score > 0.4;
+
+                // Wake word check
+                boolean hasWakeWord = text.contains("hello makoti") || text.contains("helo makoti")
+                        || text.contains("makoti") || text.contains("hello macoti")
+                        || text.contains("helo macoti") || text.contains("hello mkoti")
+                        || text.contains("makoti") && text.length() < 20;
+
+                if (hasWakeWord || (isGreeting && !conv.isGreeted)) {
+                    wakeWordDetected = true;
+                    commandMode = true;
+                    vibrate();
+                    if (isGreeting && !conv.isGreeted) {
+                        speak(conv.getGreeting());
+                    } else {
+                        speak("Yes? I'm ready.");
+                    }
+                    setWakeTimeout();
+                    return;
+                }
+
+                // Try direct intent without wake word
+                if (sem != null && sem.score > 0.35) {
+                    wakeWordDetected = true;
+                    commandMode = true;
+                    executeIntent(sem.id, text);
+                    setWakeTimeout();
+                    return;
+                }
+
+                if (!ttsSpeaking) startListening();
+                return;
+            }
+
+            // ── Command mode or follow-up ──
+            cancelWakeTimeout();
+
+            // Check if we're waiting for specific info
+            if (conv.awaitingContactName) {
+                conv.awaitingContactName = false;
+                String contact = text;
+                List<String> numbers = findContactNumber(contact);
+                if (!numbers.isEmpty()) {
+                    conv.lastContact = contact;
+                    conv.lastNumber = numbers.get(0);
+                    speak("Found " + contact + ". What should I do? Call or message?");
+                } else {
+                    speak("I couldn't find " + contact + ". Try another name.");
+                }
+                handler.postDelayed(() -> endCommandMode(), 4000);
+                return;
+            }
+
+            if (conv.awaitingNumber) {
+                conv.awaitingNumber = false;
+                String num = extractNumber(text);
+                if (num != null) {
+                    conv.lastNumber = num;
+                    speak("Number noted. Call or message?");
+                } else {
+                    conv.lastNumber = text.replaceAll("\\s+", "");
+                    speak("Got it. Call or message?");
+                }
+                handler.postDelayed(() -> endCommandMode(), 4000);
+                return;
+            }
+
+            if (conv.awaitingMessageText) {
+                conv.awaitingMessageText = false;
+                String msg = text;
+                conv.lastMessage = msg;
+                if (conv.lastNumber != null) {
+                    sendSms(conv.lastNumber, msg);
+                    speak("Message sent to " + (conv.lastContact != null ? conv.lastContact : conv.lastNumber));
+                } else if (conv.lastContact != null) {
+                    List<String> nums = findContactNumber(conv.lastContact);
+                    if (!nums.isEmpty()) {
+                        sendSms(nums.get(0), msg);
+                        speak("Message sent to " + conv.lastContact);
+                    } else {
+                        speak("I don't have a number for " + conv.lastContact);
+                    }
+                } else {
+                    speak("Who should I send it to?");
+                    conv.awaitingContactName = true;
+                }
+                handler.postDelayed(() -> endCommandMode(), 4000);
+                return;
+            }
+
+            if (conv.awaitingAppName) {
+                conv.awaitingAppName = false;
+                openAnyApp(text);
+                handler.postDelayed(() -> endCommandMode(), 3000);
+                return;
+            }
+
+            // ── Resolve intent semantically ──
+            SemanticEngine.IntentResult sem = SemanticEngine.resolve(text);
+            if (sem != null && sem.score > 0.25) {
+                executeIntent(sem.id, text);
+            } else {
+                // Fallback: extract any numbers or known patterns
+                String num = extractNumber(text);
+                if (num != null && conv.lastIntent != null) {
+                    conv.lastNumber = num;
+                    if ("call".equals(conv.lastIntent)) {
+                        makeCall(num);
+                    } else if ("sms".equals(conv.lastIntent)) {
+                        speak("What should I say?");
+                        conv.awaitingMessageText = true;
+                        return;
+                    } else {
+                        makeCall(num);
+                    }
+                } else {
+                    // Try as an app name
+                    if (openAnyApp(text)) {
+                        // app opened
+                    } else {
+                        speak(conv.getFallback());
+                    }
+                }
+            }
+            handler.postDelayed(() -> endCommandMode(), 4000);
+        }
+
+        private void endCommandMode() {
+            commandMode = false;
+            wakeWordDetected = false;
+            if (!ttsSpeaking) startListening();
+        }
+
+        private void setWakeTimeout() {
+            cancelWakeTimeout();
+            wakeTimeoutRunnable = () -> {
+                commandMode = false;
+                wakeWordDetected = false;
+                conv.startFresh();
+                wakeTimeoutRunnable = null;
+                if (!ttsSpeaking) startListening();
+            };
+            handler.postDelayed(wakeTimeoutRunnable, WAKE_TIMEOUT_MS);
+        }
+
+        private void cancelWakeTimeout() {
+            if (wakeTimeoutRunnable != null) {
+                handler.removeCallbacks(wakeTimeoutRunnable);
+                wakeTimeoutRunnable = null;
+            }
+        }
+
+        private void vibrate() {
+            if (vibrator != null && vibrator.hasVibrator()) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    vibrator.vibrate(VibrationEffect.createOneShot(100, VibrationEffect.DEFAULT_AMPLITUDE));
+                } else { vibrator.vibrate(100); }
+            }
+        }
+
+        // ─── INTENT EXECUTION ────────────────────────────────
+
+        private void executeIntent(String intentId, String rawText) {
+            conv.lastIntent = intentId;
+            Log.d(TAG, "Intent: " + intentId + " (" + rawText + ")");
+
+            switch (intentId) {
+                case "torch_on":
+                    setTorch(true);
+                    break;
+                case "torch_off":
+                    setTorch(false);
+                    break;
+                case "volume_up":
+                    audioManager.adjustStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_RAISE, 0);
+                    speak("Volume up");
+                    break;
+                case "volume_down":
+                    audioManager.adjustStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_LOWER, 0);
+                    speak("Volume down");
+                    break;
+                case "volume_set": {
+                    Integer lvl = extractNumber(rawText);
+                    if (lvl != null) {
+                        int mapped = Math.max(0, Math.min(maxVolume, lvl * maxVolume / 100));
+                        audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, mapped, 0);
+                        speak("Volume set to " + lvl);
+                    } else {
+                        speak("To what level?");
+                    }
+                    break;
+                }
+                case "open_app": {
+                    String app = extractAppName(rawText);
+                    if (app != null && !openAnyApp(app)) {
+                        speak("I couldn't find " + app);
+                    } else if (app == null) {
+                        speak("Which app should I open?");
+                        conv.awaitingAppName = true;
+                    }
+                    break;
+                }
+                case "call": {
+                    String num = extractNumber(rawText);
+                    if (num != null) {
+                        makeCall(num);
+                    } else {
+                        String contact = extractName(rawText);
+                        if (contact != null) {
+                            List<String> nums = findContactNumber(contact);
+                            if (!nums.isEmpty()) {
+                                makeCall(nums.get(0));
+                                conv.lastContact = contact;
+                            } else {
+                                speak("I don't have a number for " + contact);
+                            }
+                        } else {
+                            speak("Who should I call? Tell me the name or number.");
+                            conv.awaitingNumber = true;
+                        }
+                    }
+                    break;
+                }
+                case "sms": {
+                    String num = extractNumber(rawText);
+                    if (num != null) {
+                        conv.lastNumber = num;
+                        speak("What should I say?");
+                        conv.awaitingMessageText = true;
+                    } else {
+                        String contact = extractName(rawText);
+                        if (contact != null) {
+                            List<String> nums = findContactNumber(contact);
+                            if (!nums.isEmpty()) {
+                                conv.lastNumber = nums.get(0);
+                                conv.lastContact = contact;
+                                speak("What should I say to " + contact + "?");
+                                conv.awaitingMessageText = true;
+                            } else {
+                                speak("I don't have a number for " + contact + ". Tell me the number.");
+                                conv.awaitingNumber = true;
+                            }
+                        } else {
+                            speak("Who should I message? Name or number?");
+                            conv.awaitingContactName = true;
+                        }
+                    }
+                    break;
+                }
+                case "read_notifications": {
+                    readNotifications();
+                    break;
+                }
+                case "find_contact": {
+                    String name = extractName(rawText);
+                    if (name != null) {
+                        List<String> nums = findContactNumber(name);
+                        if (!nums.isEmpty()) {
+                            conv.lastContact = name;
+                            conv.lastNumber = nums.get(0);
+                            speak(name + " is at " + nums.get(0) + ". Call or message?");
+                        } else {
+                            speak("No contact found for " + name);
+                        }
+                    } else {
+                        speak("What name should I search for?");
+                        conv.awaitingContactName = true;
+                    }
+                    break;
+                }
+                case "read_contacts": {
+                    listAllContacts();
+                    break;
+                }
+                case "reply_message": {
+                    replyToLastNotification(rawText);
+                    break;
+                }
+                case "screenshot": {
+                    takeScreenshot();
+                    break;
+                }
+                case "wifi_on":
+                    wifiManager.setWifiEnabled(true);
+                    speak("WiFi on");
+                    break;
+                case "wifi_off":
+                    wifiManager.setWifiEnabled(false);
+                    speak("WiFi off");
+                    break;
+                case "bluetooth_on": {
+                    BluetoothAdapter ba = BluetoothAdapter.getDefaultAdapter();
+                    if (ba != null) { ba.enable(); speak("Bluetooth on"); }
+                    else speak("No Bluetooth");
+                    break;
+                }
+                case "bluetooth_off": {
+                    BluetoothAdapter ba = BluetoothAdapter.getDefaultAdapter();
+                    if (ba != null) { ba.disable(); speak("Bluetooth off"); }
+                    else speak("No Bluetooth");
+                    break;
+                }
+                case "dnd_on": case "dnd_off": {
+                    toggleDnd("dnd_on".equals(intentId));
+                    break;
+                }
+                case "take_photo": {
+                    Intent i = new Intent(android.provider.MediaStore.ACTION_IMAGE_CAPTURE);
+                    i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                    try { startActivity(i); speak("Opening camera"); }
+                    catch (Exception e) { speak("Cannot open camera"); }
+                    break;
+                }
+                case "alarm": {
+                    Integer num = extractNumber(rawText);
+                    if (num != null) {
+                        Intent i = new Intent(Intent.ACTION_SET_ALARM);
+                        i.putExtra(android.provider.AlarmClock.EXTRA_HOUR, num);
+                        i.putExtra(android.provider.AlarmClock.EXTRA_MINUTES, 0);
+                        i.putExtra(android.provider.AlarmClock.EXTRA_SKIP_UI, false);
+                        i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                        try { startActivity(i); speak("Setting alarm"); }
+                        catch (Exception e) { speak("Opening alarm"); }
+                    } else {
+                        Intent i = new Intent(Intent.ACTION_SET_ALARM);
+                        i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                        try { startActivity(i); }
+                        catch (Exception e) { speak("Alarm app not found"); }
+                    }
+                    break;
+                }
+                case "greeting":
+                    speak(conv.getGreeting());
+                    commandMode = true;
+                    setWakeTimeout();
+                    break;
+                case "thanks":
+                    speak(conv.getThanks());
+                    break;
+                case "goodbye":
+                    speak(conv.getGoodbye());
+                    conv.startFresh();
+                    break;
+                case "time": {
+                    java.text.SimpleDateFormat sdf = new java.text.SimpleDateFormat("h:mm a", Locale.ENGLISH);
+                    speak("It's " + sdf.format(new java.util.Date()));
+                    break;
+                }
+                case "date": {
+                    java.text.SimpleDateFormat sdf = new java.text.SimpleDateFormat("EEEE, MMMM d", Locale.ENGLISH);
+                    speak("Today is " + sdf.format(new java.util.Date()));
+                    break;
+                }
+                case "battery": {
+                    IntentFilter ifilter = new IntentFilter(Intent.ACTION_BATTERY_CHANGED);
+                    Intent batteryStatus = registerReceiver(null, ifilter);
+                    if (batteryStatus != null) {
+                        int level = batteryStatus.getIntExtra(android.os.BatteryManager.EXTRA_LEVEL, -1);
+                        int scale = batteryStatus.getIntExtra(android.os.BatteryManager.EXTRA_SCALE, -1);
+                        int pct = (int) ((float) level / scale * 100);
+                        speak("Battery is at " + pct + " percent");
+                    } else { speak("Could not read battery"); }
+                    break;
+                }
+                default:
+                    speak(conv.getFallback());
+            }
+        }
+
+        // ─── ACTIONS ────────────────────────────────────────
+
+        private void setTorch(boolean on) {
+            if (torchCameraId == null) { speak("No flash available"); return; }
+            try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                    cameraManager.setTorchMode(torchCameraId, on);
+                    torchOn = on;
+                    speak(on ? "Torch on" : "Torch off");
+                }
+            } catch (Exception e) { speak("Flash error"); }
+        }
+
+        private void makeCall(String number) {
+            if (number == null) { speak("No number"); return; }
+            Intent i = new Intent(Intent.ACTION_CALL, Uri.parse("tel:" + number));
+            i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            if (checkCallPerm()) {
+                try { startActivity(i); speak("Calling"); }
+                catch (Exception e) { dialNumber(number); }
+            } else { dialNumber(number); }
+        }
+
+        private void dialNumber(String number) {
+            Intent d = new Intent(Intent.ACTION_DIAL, Uri.parse("tel:" + number));
+            d.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            try { startActivity(d); speak("Dialing"); }
+            catch (Exception e) { speak("Cannot dial"); }
+        }
+
+        private void sendSms(String number, String message) {
+            if (number == null) return;
+            Intent i = new Intent(Intent.ACTION_SENDTO, Uri.parse("smsto:" + number));
+            i.putExtra("sms_body", message != null ? message : "Hello from VoiceAgent");
+            i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            try { startActivity(i); }
+            catch (Exception e) { Log.e(TAG, "SMS fail", e); }
+        }
+
+        private boolean openAnyApp(String name) {
+            if (name == null || name.isEmpty()) return false;
+            String lower = name.toLowerCase().trim();
+
+            // Direct known apps
+            Intent known = resolveKnownApp(lower);
+            if (known != null) {
+                known.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                try { startActivity(known); speak("Opening"); return true; }
+                catch (Exception e) { /* fall through */ }
+            }
+
+            // Find by package
+            String pkg = resolveAppPackage(lower);
+            if (pkg != null) {
+                Intent launch = getPackageManager().getLaunchIntentForPackage(pkg);
+                if (launch != null) {
+                    launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                    try { startActivity(launch); speak("Opening"); return true; }
+                    catch (Exception e) { /* fall through */ }
+                }
+            }
+
+            // Search all installed apps
+            Intent mainIntent = new Intent(Intent.ACTION_MAIN);
+            mainIntent.addCategory(Intent.CATEGORY_LAUNCHER);
+            List<ResolveInfo> apps = getPackageManager().queryIntentActivities(mainIntent, 0);
+            double bestScore = 0.25;
+            String bestPkg = null;
+            for (ResolveInfo ri : apps) {
+                String label = ri.loadLabel(getPackageManager()).toString().toLowerCase();
+                double sim = SemanticEngine.charNGramSimilarity(lower, label);
+                if (sim > bestScore) {
+                    bestScore = sim;
+                    bestPkg = ri.activityInfo.packageName;
+                }
+            }
+            if (bestPkg != null) {
+                Intent launch = getPackageManager().getLaunchIntentForPackage(bestPkg);
+                if (launch != null) {
+                    launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                    try { startActivity(launch); speak("Done"); return true; }
+                    catch (Exception e) { return false; }
+                }
+            }
+            return false;
+        }
+
+        private Intent resolveKnownApp(String name) {
+            if (name.contains("settings") || name.contains("seting") || name.contains("mipangilio"))
+                return new Intent(Settings.ACTION_SETTINGS);
+            if (name.contains("camera") || name.contains("kamera"))
+                return new Intent(android.provider.MediaStore.ACTION_IMAGE_CAPTURE);
+            if (name.contains("dialer") || name.contains("phone") || name.contains("simu"))
+                return new Intent(Intent.ACTION_DIAL, Uri.parse("tel:"));
+            if (name.contains("browser") || name.contains("chrome"))
+                return new Intent(Intent.ACTION_VIEW, Uri.parse("https://google.com"));
+            if (name.contains("calculator") || name.contains("kikokotoo") || name.contains("calc"))
+                return new Intent("android.intent.action.CALCULATOR");
+            if (name.contains("calendar") || name.contains("kalenda"))
+                return new Intent(Intent.ACTION_VIEW, Uri.parse("content://com.android.calendar/time/"));
+            if (name.contains("maps") || name.contains("ramani"))
+                return new Intent(Intent.ACTION_VIEW, Uri.parse("geo:0,0?q="));
+            if (name.contains("youtube"))
+                return new Intent(Intent.ACTION_VIEW).setPackage("com.google.android.youtube");
+            if (name.contains("whatsapp") || name.contains("whatasapp"))
+                return new Intent(Intent.ACTION_VIEW).setPackage("com.whatsapp");
+            if (name.contains("gallery") || name.contains("picha") || name.contains("photos"))
+                return new Intent(Intent.ACTION_VIEW).setType("image/*");
+            return null;
+        }
+
+        private String resolveAppPackage(String name) {
+            Map<String, String> map = new HashMap<>();
+            map.put("settings", "com.android.settings");
+            map.put("camera", "com.android.camera2");
+            map.put("phone", "com.android.dialer");
+            map.put("dialer", "com.android.dialer");
+            map.put("chrome", "com.android.chrome");
+            map.put("browser", "com.android.browser");
+            map.put("calculator", "com.android.calculator2");
+            map.put("calendar", "com.android.calendar");
+            map.put("maps", "com.google.android.apps.maps");
+            map.put("youtube", "com.google.android.youtube");
+            map.put("whatsapp", "com.whatsapp");
+            map.put("gallery", "com.android.gallery3d");
+            map.put("twitter", "com.twitter.android");
+            map.put("facebook", "com.facebook.katana");
+            map.put("instagram", "com.instagram.android");
+            map.put("telegram", "org.telegram.messenger");
+            map.put("tiktok", "com.zhiliaoapp.musically");
+            map.put("gmail", "com.google.android.gm");
+            map.put("email", "com.google.android.gm");
+            map.put("play store", "com.android.vending");
+            map.put("playstore", "com.android.vending");
+            map.put("clock", "com.google.android.deskclock");
+            map.put("alarm", "com.google.android.deskclock");
+            map.put("contacts", "com.google.android.contacts");
+            map.put("files", "com.android.documentsui");
+            map.put("spotify", "com.spotify.music");
+            map.put("music", "com.google.android.music");
+            map.put("photos", "com.google.android.apps.photos");
+            map.put("drive", "com.google.android.apps.docs");
+            for (Map.Entry<String, String> e : map.entrySet()) {
+                if (name.contains(e.getKey())) return e.getValue();
+            }
+            return null;
+        }
+
+        // ─── Contacts ───────────────────────────────────────
+
+        private List<String> findContactNumber(String name) {
+            List<String> numbers = new ArrayList<>();
+            if (name == null || name.isEmpty()) return numbers;
+            try {
+                String[] projection = {ContactsContract.CommonDataKinds.Phone.NUMBER};
+                String selection = ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME
+                        + " LIKE ?";
+                String[] args = {"%" + name + "%"};
+                Cursor cursor = contentResolver.query(
+                        ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
+                        projection, selection, args, null);
+                if (cursor != null) {
+                    while (cursor.moveToNext()) {
+                        numbers.add(cursor.getString(0));
+                    }
+                    cursor.close();
+                }
+            } catch (Exception e) { Log.e(TAG, "Contacts error", e); }
+            return numbers;
+        }
+
+        private void listAllContacts() {
+            try {
+                String[] projection = {ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME,
+                        ContactsContract.CommonDataKinds.Phone.NUMBER};
+                Cursor cursor = contentResolver.query(
+                        ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
+                        projection, null, null,
+                        ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME + " ASC LIMIT 20");
+                StringBuilder sb = new StringBuilder();
+                if (cursor != null) {
+                    int count = 0;
+                    while (cursor.moveToNext() && count < 20) {
+                        String name = cursor.getString(0);
+                        String num = cursor.getString(1);
+                        if (name != null) {
+                            sb.append(name).append(", ");
+                            count++;
+                        }
+                    }
+                    cursor.close();
+                    if (sb.length() > 2) {
+                        sb.setLength(sb.length() - 2);
+                        speak("Your contacts: " + sb.toString());
+                    } else {
+                        speak("No contacts found");
+                    }
+                } else { speak("Cannot read contacts"); }
+            } catch (Exception e) { speak("Contacts error"); }
+        }
+
+        // ─── Notifications ──────────────────────────────────
+
+        private void readNotifications() {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                try {
+                    var active = notificationManager.getActiveNotifications();
+                    if (active.length == 0) { speak("No notifications"); return; }
+                    StringBuilder sb = new StringBuilder();
+                    for (int i = 0; i < Math.min(3, active.length); i++) {
+                        String t = active[i].getNotification().extras
+                                .getString(android.app.Notification.EXTRA_TITLE, "");
+                        String txt = active[i].getNotification().extras
+                                .getString(android.app.Notification.EXTRA_TEXT, "");
+                        if (!t.isEmpty()) sb.append(t).append(". ");
+                        if (!txt.isEmpty()) sb.append(txt).append(". ");
+                    }
+                    speak(sb.length() > 0 ? sb.toString() : "Notifications present");
+                } catch (Exception e) { speak("Cannot read notifications"); }
+            } else { speak("Not supported"); }
+        }
+
+        private void replyToLastNotification(String rawText) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                try {
+                    var active = notificationManager.getActiveNotifications();
+                    if (active.length == 0) { speak("No notifications to reply to"); return; }
+                    // Use the most recent notification that supports reply
+                    for (int i = 0; i < active.length; i++) {
+                        Notification notif = active[i].getNotification();
+                        if (notif.actions != null) {
+                            for (Notification.Action act : notif.actions) {
+                                if (act.actionIntent != null && act.title != null
+                                        && (act.title.toString().toLowerCase().contains("reply")
+                                            || act.title.toString().toLowerCase().contains("jibu"))) {
+                                    try { act.actionIntent.send(); speak("Replied"); return; }
+                                    catch (Exception e) { /* fall through */ }
+                                }
+                            }
+                        }
+                    }
+                    // Fallback: open the app that sent the last notification
+                    if (active.length > 0) {
+                        String pkg = active[0].getPackageName();
+                        Intent launch = getPackageManager().getLaunchIntentForPackage(pkg);
+                        if (launch != null) {
+                            launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                            startActivity(launch);
+                            speak("Opening app");
+                        } else { speak("Cannot reply"); }
+                    }
+                } catch (Exception e) { speak("Cannot reply"); }
+            } else { speak("Not supported"); }
+        }
+
+        // ─── Screenshot ─────────────────────────────────────
+
+        private void takeScreenshot() {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                try {
+                    Intent i = ((android.media.projection.MediaProjectionManager)
+                            .getSystemService(MEDIA_PROJECTION_SERVICE))
+                            .createScreenCaptureIntent();
+                    i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                    startActivity(i);
+                    speak("Capturing");
+                } catch (Exception e) { speak("Screenshot error"); }
+            } else { speak("Not supported"); }
+        }
+
+        // ─── DND ────────────────────────────────────────────
+
+        private void toggleDnd(boolean on) {
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) { speak("Not supported"); return; }
+            int filter = on ? NotificationManager.INTERRUPTION_FILTER_PRIORITY
+                            : NotificationManager.INTERRUPTION_FILTER_ALL;
+            if (notificationManager.isNotificationPolicyAccessGranted()) {
+                notificationManager.setInterruptionFilter(filter);
+                speak(on ? "Quiet on" : "Quiet off");
+            } else {
+                Intent i = new Intent(Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS);
+                i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                startActivity(i);
+                speak("Allow DND access");
+            }
+        }
+
+        // ─── Helpers ────────────────────────────────────────
+
+        private boolean checkCallPerm() {
+            return ContextCompat.checkSelfPermission(this, Manifest.permission.CALL_PHONE)
+                    == PackageManager.PERMISSION_GRANTED;
+        }
+
+        private String extractNumber(String text) {
+            if (text == null) return null;
+            var m = java.util.regex.Pattern.compile("(\\+?\\d[\\d\\s\\-\\(\\)]{4,14}\\d)").matcher(text);
+            return m.find() ? m.group(1).replaceAll("[\\s\\-\\(\\)]", "") : null;
+        }
+
+        private String extractName(String text) {
+            if (text == null) return null;
+            String t = text.toLowerCase().trim();
+            String[] triggers = {"call", "dial", "message", "text", "find", "contact",
+                    "piga", "simu", "mpigie", "ujumbe", "tafuta", "anwani", "number for",
+                    "phone number of", "send message to", "send to", "tell"};
+            for (String trig : triggers) {
+                int idx = t.indexOf(trig);
+                if (idx >= 0) {
+                    String after = t.substring(idx + trig.length()).trim();
+                    if (!after.isEmpty()) {
+                        // Remove trailing words that aren't names
+                        String clean = after.replaceAll("\\b(please|now|quick|fast|urgent|sasa|tafadhali)\\b", "").trim();
+                        if (!clean.isEmpty()) return clean;
+                    }
+                }
+            }
+            // If text contains "to" use what follows
+            String[] parts = t.split("\\b(to|kwa|kwa namba)\\b");
+            if (parts.length > 1) {
+                String after = parts[parts.length - 1].trim();
+                if (!after.isEmpty()) return after;
+            }
+            // If it's just 1-3 words, it might be a name
+            String[] words = t.split("\\s+");
+            if (words.length <= 3 && words.length >= 1) return t;
+            return null;
+        }
+
+        private String extractAppName(String text) {
+            if (text == null) return null;
+            String t = text.toLowerCase().trim();
+            String[] triggers = {"open", "launch", "start", "run", "go to",
+                    "fungua", "zindua", "anzisha", "fungua"};
+            for (String trig : triggers) {
+                int idx = t.indexOf(trig);
+                if (idx >= 0) {
+                    String after = t.substring(idx + trig.length()).trim();
+                    if (!after.isEmpty()) return after;
+                }
+            }
+            return null;
+        }
+
+        // ─── Service Lifecycle ─────────────────────────────
+
+        @Nullable
+        @Override
+        public IBinder onBind(Intent intent) { return null; }
+
+        @Override
+        public int onStartCommand(Intent intent, int flags, int startId) {
+            return START_STICKY;
+        }
+
+        @Override
+        public void onDestroy() {
+            if (recognizer != null) { recognizer.destroy(); recognizer = null; }
+            if (tts != null) { tts.stop(); tts.shutdown(); tts = null; }
+            if (wakeLock != null && wakeLock.isHeld()) { wakeLock.release(); }
+            handler.removeCallbacksAndMessages(null);
+            Intent restart = new Intent(this, VoiceCommandService.class);
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) { startForegroundService(restart); }
+            else { startService(restart); }
+            super.onDestroy();
+        }
+    }
+}

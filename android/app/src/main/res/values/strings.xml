@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">VoiceAgent</string>
+    <string name="channel_name">Voice Agent</string>
+    <string name="channel_desc">Voice Agent is listening for commands</string>
+    <string name="notification_listening">Listening...</string>
+    <string name="notification_speaking">Speaking...</string>
+    <string name="download_title">Download VoiceAgent</string>
+</resources>

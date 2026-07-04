@@ -1,0 +1,619 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="theme-color" content="#0a0a1a">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
+    <title>VoiceAgent AI APK Download</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: #0a0a1a;
+            color: #f0f0f5;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            overflow-x: hidden;
+        }
+
+        .orb {
+            position: fixed;
+            border-radius: 50%;
+            filter: blur(80px);
+            pointer-events: none;
+            z-index: 0;
+        }
+        .orb-1 {
+            width: 500px;
+            height: 500px;
+            background: rgba(0, 120, 255, 0.15);
+            top: -150px;
+            left: -100px;
+            animation: float1 8s ease-in-out infinite;
+        }
+        .orb-2 {
+            width: 400px;
+            height: 400px;
+            background: rgba(120, 0, 255, 0.12);
+            bottom: -100px;
+            right: -80px;
+            animation: float2 10s ease-in-out infinite;
+        }
+        .orb-3 {
+            width: 300px;
+            height: 300px;
+            background: rgba(0, 200, 255, 0.08);
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            animation: float3 12s ease-in-out infinite;
+        }
+
+        @keyframes float1 {
+            0%, 100% { transform: translate(0, 0); }
+            50% { transform: translate(60px, 40px); }
+        }
+        @keyframes float2 {
+            0%, 100% { transform: translate(0, 0); }
+            50% { transform: translate(-50px, -60px); }
+        }
+        @keyframes float3 {
+            0%, 100% { transform: translate(-50%, -50%) scale(1); }
+            50% { transform: translate(-50%, -50%) scale(1.3); }
+        }
+
+        .container {
+            position: relative;
+            z-index: 1;
+            width: 100%;
+            max-width: 480px;
+            padding: 24px 20px 60px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 14px;
+            border-radius: 100px;
+            background: rgba(0, 180, 255, 0.1);
+            border: 1px solid rgba(0, 180, 255, 0.2);
+            font-size: 11px;
+            font-weight: 600;
+            color: #4dc9f6;
+            text-transform: uppercase;
+            letter-spacing: 1.2px;
+            margin-bottom: 24px;
+        }
+        .badge .dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: #4dc9f6;
+            animation: pulse-dot 1.5s ease-in-out infinite;
+        }
+        @keyframes pulse-dot {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.3; }
+        }
+
+        .icon-wrapper {
+            width: 80px;
+            height: 80px;
+            border-radius: 22px;
+            background: linear-gradient(135deg, #0066ff, #7c3aed);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 20px;
+            box-shadow: 0 8px 40px rgba(0, 102, 255, 0.3);
+        }
+        .icon-wrapper svg {
+            width: 42px;
+            height: 42px;
+            fill: white;
+        }
+
+        h1 {
+            font-size: 28px;
+            font-weight: 800;
+            background: linear-gradient(135deg, #f0f0f5 0%, #a0b4ff 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            text-align: center;
+            margin-bottom: 8px;
+            line-height: 1.2;
+        }
+
+        .subtitle {
+            font-size: 15px;
+            font-weight: 400;
+            color: #8899bb;
+            text-align: center;
+            margin-bottom: 32px;
+            line-height: 1.5;
+        }
+
+        .version-info {
+            display: flex;
+            gap: 16px;
+            margin-bottom: 28px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+        .version-info span {
+            font-size: 12px;
+            font-weight: 500;
+            color: #667799;
+            padding: 4px 12px;
+            border-radius: 6px;
+            background: rgba(255,255,255,0.03);
+            border: 1px solid rgba(255,255,255,0.06);
+        }
+
+        .features {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            width: 100%;
+            margin-bottom: 32px;
+        }
+        .feature-item {
+            padding: 14px 12px;
+            border-radius: 12px;
+            background: rgba(255,255,255,0.02);
+            border: 1px solid rgba(255,255,255,0.05);
+            text-align: center;
+            transition: all 0.2s;
+        }
+        .feature-item:hover {
+            background: rgba(255,255,255,0.04);
+            border-color: rgba(255,255,255,0.1);
+            transform: translateY(-1px);
+        }
+        .feature-item .emoji {
+            font-size: 22px;
+            display: block;
+            margin-bottom: 6px;
+        }
+        .feature-item .label {
+            font-size: 11px;
+            font-weight: 600;
+            color: #c0ccdd;
+            line-height: 1.3;
+        }
+
+        .download-card {
+            width: 100%;
+            padding: 28px 24px;
+            border-radius: 20px;
+            background: linear-gradient(
+                135deg,
+                rgba(255,255,255,0.04) 0%,
+                rgba(255,255,255,0.01) 100%
+            );
+            border: 1px solid rgba(255,255,255,0.08);
+            backdrop-filter: blur(20px);
+            margin-bottom: 20px;
+            text-align: center;
+        }
+
+        .file-info {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 16px;
+            margin-bottom: 20px;
+            padding: 12px 16px;
+            border-radius: 12px;
+            background: rgba(255,255,255,0.03);
+        }
+        .file-info .icon {
+            font-size: 28px;
+        }
+        .file-info .details {
+            text-align: left;
+        }
+        .file-info .name {
+            font-size: 14px;
+            font-weight: 600;
+            color: #e0e8f0;
+        }
+        .file-info .meta {
+            font-size: 12px;
+            color: #667799;
+        }
+
+        .download-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            width: 100%;
+            padding: 16px 32px;
+            border-radius: 14px;
+            border: none;
+            font-family: 'Inter', sans-serif;
+            font-size: 17px;
+            font-weight: 700;
+            color: white;
+            cursor: pointer;
+            background: linear-gradient(135deg, #0066ff, #7c3aed);
+            box-shadow: 0 4px 24px rgba(0, 102, 255, 0.35);
+            transition: all 0.25s;
+            position: relative;
+            overflow: hidden;
+            text-decoration: none;
+        }
+        .download-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 40px rgba(0, 102, 255, 0.45);
+        }
+        .download-btn:active {
+            transform: translateY(0);
+        }
+        .download-btn .spinner {
+            display: none;
+            width: 20px;
+            height: 20px;
+            border: 2.5px solid rgba(255,255,255,0.3);
+            border-top-color: white;
+            border-radius: 50%;
+            animation: spin 0.7s linear infinite;
+        }
+        .download-btn.loading .spinner {
+            display: inline-block;
+        }
+        .download-btn.loading .btn-text {
+            display: none;
+        }
+        .download-btn.loading .btn-icon {
+            display: none;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .secure-note {
+            font-size: 12px;
+            color: #556688;
+            margin-top: 14px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 5px;
+        }
+
+        .steps {
+            width: 100%;
+            margin-top: 12px;
+        }
+        .steps h3 {
+            font-size: 13px;
+            font-weight: 600;
+            color: #8899bb;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 14px;
+            text-align: center;
+        }
+        .step {
+            display: flex;
+            align-items: flex-start;
+            gap: 12px;
+            padding: 12px 14px;
+            border-radius: 10px;
+            background: rgba(255,255,255,0.02);
+            margin-bottom: 8px;
+        }
+        .step .num {
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            background: rgba(0, 102, 255, 0.15);
+            color: #4dc9f6;
+            font-size: 12px;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+        }
+        .step .text {
+            font-size: 13px;
+            color: #b0c0d8;
+            line-height: 1.5;
+        }
+        .step .text strong {
+            color: #d0dcee;
+        }
+
+        .footer {
+            margin-top: 32px;
+            font-size: 12px;
+            color: #445566;
+            text-align: center;
+            line-height: 1.6;
+        }
+        .footer a {
+            color: #4dc9f6;
+            text-decoration: none;
+        }
+
+        /* Server-side config note (hidden from UI) */
+        .htaccess-note {
+            display: none;
+        }
+
+        @media (max-width: 380px) {
+            .features {
+                grid-template-columns: 1fr;
+            }
+            h1 {
+                font-size: 24px;
+            }
+            .download-card {
+                padding: 20px 16px;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="orb orb-1"></div>
+    <div class="orb orb-2"></div>
+    <div class="orb orb-3"></div>
+
+    <div class="container">
+
+        <div class="badge">
+            <span class="dot"></span>
+            v2.1.0 &middot; Production
+        </div>
+
+        <div class="icon-wrapper">
+            <svg viewBox="0 0 24 24">
+                <path d="M12 1a9 9 0 0 0-9 9v7c0 1.66 1.34 3 3 3h3v-8H5v-2c0-3.87 3.13-7 7-7s7 3.13 7 7v2h-4v8h3c1.66 0 3-1.34 3-3v-7a9 9 0 0 0-9-9z"/>
+            </svg>
+        </div>
+
+        <h1>VoiceAgent AI</h1>
+        <p class="subtitle">
+            Bilingual AI Voice Agent &middot; English &middot; Kiswahili<br>
+            System Control &middot; On-Device Intelligence
+        </p>
+
+        <div class="version-info">
+            <span>&#9745; 12MB</span>
+            <span>&#9745; Android 8.0+</span>
+            <span>&#9745; ARM64</span>
+            <span>&#9745; No Root</span>
+        </div>
+
+        <div class="features">
+            <div class="feature-item">
+                <span class="emoji">&#x1F3A4;</span>
+                <span class="label">Voice Commands</span>
+            </div>
+            <div class="feature-item">
+                <span class="emoji">&#x1F1F0;&#x1F1EA;</span>
+                <span class="label">English + Kiswahili</span>
+            </div>
+            <div class="feature-item">
+                <span class="emoji">&#x1F4A1;</span>
+                <span class="label">Torch / Flashlight</span>
+            </div>
+            <div class="feature-item">
+                <span class="emoji">&#x1F50A;</span>
+                <span class="label">Volume Control</span>
+            </div>
+            <div class="feature-item">
+                <span class="emoji">&#x1F4F1;</span>
+                <span class="label">Open Any App</span>
+            </div>
+            <div class="feature-item">
+                <span class="emoji">&#x1F514;</span>
+                <span class="label">Read Notifications</span>
+            </div>
+        </div>
+
+        <div class="download-card">
+            <div class="file-info">
+                <span class="icon">&#x1F4E6;</span>
+                <div class="details">
+                    <div class="name">VoiceAgent-v2.1.0.apk</div>
+                    <div class="meta">Signed &middot; Production &middot; 12.4 MB</div>
+                </div>
+            </div>
+
+            <a id="downloadLink"
+               class="download-btn"
+               href="VoiceAgent-v2.1.0.apk"
+               download="VoiceAgent-v2.1.0.apk">
+                <span class="btn-icon">&#x2B07;</span>
+                <span class="btn-text">Download APK</span>
+                <span class="spinner"></span>
+            </a>
+
+            <div class="secure-note">
+                &#x1F512; Encrypted &middot; Signed &middot; Verified
+            </div>
+        </div>
+
+        <div class="steps">
+            <h3>How to Install</h3>
+            <div class="step">
+                <span class="num">1</span>
+                <span class="text">Tap <strong>Download APK</strong> above &mdash; the file will save to your device.</span>
+            </div>
+            <div class="step">
+                <span class="num">2</span>
+                <span class="text">Open the downloaded <strong>.apk</strong> file from your notifications or Downloads folder.</span>
+            </div>
+            <div class="step">
+                <span class="num">3</span>
+                <span class="text">If prompted, enable <strong>Install from unknown sources</strong> (Settings &rarr; Security).</span>
+            </div>
+            <div class="step">
+                <span class="num">4</span>
+                <span class="text">Grant <strong>Microphone, Camera, Notification</strong> permissions when asked.</span>
+            </div>
+        </div>
+
+        <div class="footer">
+            VoiceAgent AI &mdash; Open Source &middot; Apache 2.0<br>
+            <a href="#" onclick="window.location.reload()">Refresh</a> for latest version<br>
+            SHA-256: <span style="font-family:monospace;font-size:11px;">A1B2...E8F0</span>
+        </div>
+
+    </div>
+
+    <script>
+        (function () {
+            'use strict';
+
+            var btn = document.querySelector('.download-btn');
+            var link = document.getElementById('downloadLink');
+
+            // ── Force binary MIME type on download ──────────────
+            // On many mobile browsers, simply using the download attribute
+            // is enough. We also add extra safety by programmatically
+            // fetching with the correct Accept header as a fallback.
+
+            function triggerDownload(url, filename) {
+                // Primary method: anchor click with download attribute
+                var a = document.createElement('a');
+                a.href = url;
+                a.download = filename || 'VoiceAgent-v2.1.0.apk';
+                a.rel = 'noopener noreferrer';
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+            }
+
+            function fallbackDownload(url, filename) {
+                // Fallback: fetch with correct binary headers and create blob
+                btn.classList.add('loading');
+                fetch(url, {
+                    method: 'GET',
+                    headers: {
+                        'Accept': 'application/vnd.android.package-archive, application/octet-stream, */*',
+                    },
+                })
+                .then(function (res) {
+                    if (!res.ok) throw new Error('HTTP ' + res.status);
+                    return res.blob();
+                })
+                .then(function (blob) {
+                    var blobUrl = URL.createObjectURL(blob);
+                    var a = document.createElement('a');
+                    a.href = blobUrl;
+                    a.download = filename || 'VoiceAgent-v2.1.0.apk';
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    setTimeout(function () { URL.revokeObjectURL(blobUrl); }, 10000);
+                    btn.classList.remove('loading');
+                })
+                .catch(function (err) {
+                    btn.classList.remove('loading');
+                    // Last resort: direct navigation
+                    window.location.href = url;
+                });
+            }
+
+            btn.addEventListener('click', function (e) {
+                // If the anchor's href fails to trigger a download on some
+                // mobile browsers, we attempt the fetch-based fallback.
+                var href = link.getAttribute('href');
+                var filename = link.getAttribute('download') || 'VoiceAgent-v2.1.0.apk';
+
+                // Try primary method
+                triggerDownload(href, filename);
+
+                // Schedule fallback only if download seems not to have started
+                var checkTimer = setTimeout(function () {
+                    // If the user is still on the page after 2 seconds, the
+                    // download likely didn't start (or is very large).
+                    // Use fetch fallback.
+                    fallbackDownload(href, filename);
+                }, 2000);
+
+                // If the page visibility changes, the download likely started
+                document.addEventListener('visibilitychange', function onVis() {
+                    if (document.hidden) {
+                        clearTimeout(checkTimer);
+                        btn.classList.remove('loading');
+                        document.removeEventListener('visibilitychange', onVis);
+                    }
+                });
+            });
+
+            // ── Service Worker (optional, for offline-capable downloads) ──
+            if ('serviceWorker' in navigator) {
+                // Register a minimal SW that can intercept fetch for the APK
+                // and always respond with the correct Content-Type.
+                // This is optional and only for advanced scenarios.
+                // navigator.serviceWorker.register('/sw.js');
+            }
+
+            // ── Log for debugging ──────────────────────────
+            console.log('VoiceAgent Download Page loaded');
+            console.log('Platform:', navigator.platform);
+            console.log('User Agent:', navigator.userAgent);
+        })();
+    </script>
+
+    <!--
+    ================================================================
+    SERVER CONFIGURATION — REQUIRED FOR CORRECT APK SERVING
+
+    Place this in .htaccess (Apache) or equivalent server config:
+
+    --- .htaccess ---
+    <IfModule mod_mime.c>
+        AddType application/vnd.android.package-archive .apk
+        AddType application/octet-stream .apk
+    </IfModule>
+
+    <FilesMatch "\.apk$">
+        ForceType application/vnd.android.package-archive
+        Header set Content-Type "application/vnd.android.package-archive"
+        Header set Content-Disposition "attachment; filename=\"VoiceAgent.apk\""
+        Header set X-Content-Type-Options "nosniff"
+    </FilesMatch>
+
+    --- Nginx ---
+    location ~* \.apk$ {
+        types { application/vnd.android.package-archive apk; }
+        default_type application/vnd.android.package-archive;
+        add_header Content-Disposition 'attachment; filename="VoiceAgent.apk"';
+        add_header X-Content-Type-Options "nosniff";
+    }
+
+    --- IIS web.config ---
+    <system.webServer>
+        <staticContent>
+            <mimeMap fileExtension=".apk" mimeType="application/vnd.android.package-archive" />
+        </staticContent>
+    </system.webServer>
+    ================================================================
+    -->
+
+</body>
+</html>

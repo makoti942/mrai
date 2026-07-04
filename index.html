@@ -1,0 +1,791 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="theme-color" content="#0a0a1a">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="description" content="VoiceAgent - Bilingual AI Voice Agent APK. Control your Android phone with voice commands in English and Kiswahili.">
+    <meta name="keywords" content="voice agent, android, apk, voice commands, kiswahili, english, ai">
+    <meta property="og:title" content="VoiceAgent AI - Voice Control Your Android">
+    <meta property="og:description" content="Bilingual AI Voice Agent for Android. English + Kiswahili. System control, torch, volume, apps, notifications.">
+    <meta property="og:type" content="website">
+    <title>VoiceAgent AI — Download APK</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🤖</text></svg>">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        html { scroll-behavior: smooth; }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: #080818;
+            color: #e8e8f0;
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        /* ─── Animated Background ─── */
+        .bg-orb {
+            position: fixed;
+            border-radius: 50%;
+            filter: blur(100px);
+            pointer-events: none;
+            z-index: 0;
+            will-change: transform;
+        }
+        .orb-a {
+            width: 600px; height: 600px;
+            background: rgba(0, 100, 255, 0.10);
+            top: -200px; left: -150px;
+            animation: orbDrift 12s ease-in-out infinite;
+        }
+        .orb-b {
+            width: 500px; height: 500px;
+            background: rgba(120, 0, 255, 0.08);
+            bottom: -150px; right: -120px;
+            animation: orbDrift2 14s ease-in-out infinite;
+        }
+        .orb-c {
+            width: 400px; height: 400px;
+            background: rgba(0, 200, 255, 0.06);
+            top: 40%; left: 30%;
+            animation: orbDrift3 16s ease-in-out infinite;
+        }
+        @keyframes orbDrift {
+            0%, 100% { transform: translate(0, 0) scale(1); }
+            50% { transform: translate(80px, 60px) scale(1.1); }
+        }
+        @keyframes orbDrift2 {
+            0%, 100% { transform: translate(0, 0) scale(1); }
+            50% { transform: translate(-70px, -80px) scale(1.15); }
+        }
+        @keyframes orbDrift3 {
+            0%, 100% { transform: translate(0, 0) scale(1); }
+            50% { transform: translate(40px, -40px) scale(1.2); }
+        }
+
+        .container {
+            position: relative;
+            z-index: 1;
+            max-width: 520px;
+            margin: 0 auto;
+            padding: 40px 20px 80px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        /* ─── Hero ─── */
+        .hero {
+            text-align: center;
+            margin-bottom: 40px;
+        }
+
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 16px;
+            border-radius: 100px;
+            background: rgba(0, 180, 255, 0.08);
+            border: 1px solid rgba(0, 180, 255, 0.15);
+            font-size: 11px;
+            font-weight: 600;
+            color: #4dc9f6;
+            text-transform: uppercase;
+            letter-spacing: 1.5px;
+            margin-bottom: 28px;
+        }
+        .badge .pulse {
+            width: 7px; height: 7px;
+            border-radius: 50%;
+            background: #4dc9f6;
+            animation: pulseDot 1.4s ease-in-out infinite;
+        }
+        @keyframes pulseDot {
+            0%, 100% { opacity: 1; transform: scale(1); box-shadow: 0 0 0 0 rgba(77,201,246,0.4); }
+            50% { opacity: 0.6; transform: scale(1.3); box-shadow: 0 0 0 6px rgba(77,201,246,0); }
+        }
+
+        .logo {
+            width: 88px; height: 88px;
+            border-radius: 24px;
+            background: linear-gradient(135deg, #0055ff, #7c3aed);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 24px;
+            box-shadow: 0 12px 48px rgba(0, 85, 255, 0.30);
+            transition: transform 0.3s;
+        }
+        .logo:hover { transform: scale(1.04); }
+        .logo svg { width: 46px; height: 46px; fill: white; }
+
+        h1 {
+            font-size: 34px;
+            font-weight: 900;
+            background: linear-gradient(135deg, #f0f0ff 0%, #8090ff 50%, #c080ff 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 12px;
+            line-height: 1.15;
+            letter-spacing: -0.5px;
+        }
+
+        .tagline {
+            font-size: 16px;
+            font-weight: 400;
+            color: #8899bb;
+            line-height: 1.6;
+            max-width: 400px;
+        }
+        .tagline strong { color: #b0c0e0; }
+
+        /* ─── Specs Bar ─── */
+        .specs {
+            display: flex;
+            gap: 4px;
+            margin: 24px 0 8px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+        .specs span {
+            font-size: 11px;
+            font-weight: 500;
+            color: #667799;
+            padding: 5px 12px;
+            border-radius: 100px;
+            background: rgba(255,255,255,0.03);
+            border: 1px solid rgba(255,255,255,0.06);
+        }
+
+        /* ─── Feature Grid ─── */
+        .features {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 8px;
+            width: 100%;
+            margin-bottom: 36px;
+        }
+        .feat {
+            padding: 16px 10px;
+            border-radius: 14px;
+            background: rgba(255,255,255,0.02);
+            border: 1px solid rgba(255,255,255,0.05);
+            text-align: center;
+            transition: all 0.2s;
+        }
+        .feat:hover {
+            background: rgba(255,255,255,0.04);
+            border-color: rgba(255,255,255,0.1);
+            transform: translateY(-2px);
+        }
+        .feat .icon { font-size: 24px; display: block; margin-bottom: 5px; }
+        .feat .lbl { font-size: 10px; font-weight: 600; color: #c0cce0; text-transform: uppercase; letter-spacing: 0.5px; }
+        .feat .sub { font-size: 9px; color: #667799; margin-top: 2px; }
+
+        /* ─── Languages Flag ─── */
+        .lang-banner {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            padding: 12px 22px;
+            border-radius: 100px;
+            background: rgba(255,255,255,0.03);
+            border: 1px solid rgba(255,255,255,0.06);
+            margin-bottom: 36px;
+        }
+        .lang-banner .flag { font-size: 20px; }
+        .lang-banner .text { font-size: 13px; font-weight: 500; color: #b0c0d8; }
+        .lang-banner .text strong { color: #e0e8f0; }
+        .lang-banner .divider { width: 1px; height: 24px; background: rgba(255,255,255,0.08); }
+
+        /* ─── Download Card ─── */
+        .download-card {
+            width: 100%;
+            padding: 32px 28px;
+            border-radius: 24px;
+            background: linear-gradient(160deg,
+                rgba(255,255,255,0.05) 0%,
+                rgba(255,255,255,0.01) 100%);
+            border: 1px solid rgba(255,255,255,0.08);
+            backdrop-filter: blur(24px);
+            -webkit-backdrop-filter: blur(24px);
+            text-align: center;
+            margin-bottom: 28px;
+        }
+
+        .file-row {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 16px;
+            padding: 14px 18px;
+            border-radius: 14px;
+            background: rgba(255,255,255,0.03);
+            margin-bottom: 22px;
+        }
+        .file-row .icon { font-size: 30px; }
+        .file-row .info { text-align: left; }
+        .file-row .name { font-size: 15px; font-weight: 600; color: #e0e8f0; }
+        .file-row .meta { font-size: 12px; color: #667799; }
+
+        .btn-download {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            width: 100%;
+            padding: 18px 32px;
+            border-radius: 16px;
+            border: none;
+            font-family: 'Inter', sans-serif;
+            font-size: 18px;
+            font-weight: 700;
+            color: white;
+            cursor: pointer;
+            background: linear-gradient(135deg, #0055ff, #7c3aed);
+            box-shadow: 0 6px 32px rgba(0, 85, 255, 0.35);
+            transition: all 0.25s;
+            position: relative;
+            overflow: hidden;
+            text-decoration: none;
+        }
+        .btn-download:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 12px 48px rgba(0, 85, 255, 0.45);
+        }
+        .btn-download:active { transform: translateY(0); }
+        .btn-download .spin {
+            display: none;
+            width: 22px; height: 22px;
+            border: 3px solid rgba(255,255,255,0.25);
+            border-top-color: white;
+            border-radius: 50%;
+            animation: spin .65s linear infinite;
+        }
+        .btn-download.loading .spin { display: inline-block; }
+        .btn-download.loading .btxt { display: none; }
+        .btn-download.loading .bicon { display: none; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        .btn-download .glow {
+            position: absolute;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: radial-gradient(circle, rgba(255,255,255,0.1) 0%, transparent 60%);
+            opacity: 0;
+            transition: opacity 0.4s;
+            pointer-events: none;
+        }
+        .btn-download:hover .glow { opacity: 1; }
+
+        .secure {
+            font-size: 12px;
+            color: #556688;
+            margin-top: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+        }
+
+        .mirror-note {
+            font-size: 12px;
+            color: #445577;
+            margin-top: 10px;
+        }
+
+        /* ─── Steps ─── */
+        .steps-section {
+            width: 100%;
+            margin-bottom: 32px;
+        }
+        .steps-section h3 {
+            font-size: 12px;
+            font-weight: 600;
+            color: #667799;
+            text-transform: uppercase;
+            letter-spacing: 1.5px;
+            margin-bottom: 16px;
+            text-align: center;
+        }
+        .step {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            padding: 14px 16px;
+            border-radius: 12px;
+            background: rgba(255,255,255,0.02);
+            margin-bottom: 8px;
+        }
+        .step .num {
+            width: 28px; height: 28px;
+            border-radius: 50%;
+            background: rgba(0, 85, 255, 0.12);
+            color: #4dc9f6;
+            font-size: 12px;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+        }
+        .step .txt {
+            font-size: 13px;
+            color: #b0c0d8;
+            line-height: 1.5;
+        }
+        .step .txt strong { color: #d8e0ee; }
+
+        /* ─── Command Examples ─── */
+        .cmds {
+            width: 100%;
+            margin-bottom: 36px;
+        }
+        .cmds h3 {
+            font-size: 12px;
+            font-weight: 600;
+            color: #667799;
+            text-transform: uppercase;
+            letter-spacing: 1.5px;
+            margin-bottom: 14px;
+            text-align: center;
+        }
+        .cmd-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 6px;
+        }
+        .cmd-item {
+            padding: 10px 14px;
+            border-radius: 10px;
+            background: rgba(255,255,255,0.02);
+            border: 1px solid rgba(255,255,255,0.04);
+            font-size: 12px;
+            color: #8899bb;
+        }
+        .cmd-item .en { color: #c0cce0; font-weight: 500; }
+        .cmd-item .sw { color: #7c8aaa; font-size: 11px; display: block; margin-top: 2px; }
+
+        /* ─── Footer ─── */
+        .footer {
+            margin-top: 20px;
+            text-align: center;
+            font-size: 12px;
+            color: #445566;
+            line-height: 1.8;
+        }
+        .footer a { color: #4dc9f6; text-decoration: none; }
+        .footer a:hover { text-decoration: underline; }
+        .footer .hash {
+            font-family: 'SF Mono', 'Fira Code', monospace;
+            font-size: 11px;
+            color: #334455;
+            margin-top: 4px;
+            word-break: break-all;
+        }
+
+        /* ─── Responsive ─── */
+        @media (max-width: 440px) {
+            h1 { font-size: 28px; }
+            .features { grid-template-columns: 1fr 1fr; gap: 6px; }
+            .cmd-grid { grid-template-columns: 1fr; }
+            .download-card { padding: 24px 18px; }
+            .logo { width: 72px; height: 72px; }
+            .logo svg { width: 36px; height: 36px; }
+            .lang-banner { flex-wrap: wrap; justify-content: center; padding: 10px 16px; }
+            .lang-banner .divider { display: none; }
+        }
+        @media (max-width: 360px) {
+            .features { grid-template-columns: 1fr; }
+            .container { padding: 24px 14px 60px; }
+        }
+
+        /* ─── Toast ─── */
+        .toast {
+            position: fixed;
+            bottom: 24px;
+            left: 50%;
+            transform: translateX(-50%) translateY(80px);
+            padding: 12px 24px;
+            border-radius: 12px;
+            background: rgba(0,0,0,0.85);
+            border: 1px solid rgba(255,255,255,0.08);
+            color: #e8e8f0;
+            font-size: 14px;
+            font-weight: 500;
+            backdrop-filter: blur(12px);
+            opacity: 0;
+            transition: all 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+            pointer-events: none;
+            z-index: 100;
+        }
+        .toast.show {
+            opacity: 1;
+            transform: translateX(-50%) translateY(0);
+        }
+    </style>
+</head>
+<body>
+
+    <div class="bg-orb orb-a"></div>
+    <div class="bg-orb orb-b"></div>
+    <div class="bg-orb orb-c"></div>
+
+    <div class="container">
+
+        <!-- Hero -->
+        <div class="hero">
+            <div class="badge">
+                <span class="pulse"></span>
+                v2.1 &middot; Production
+            </div>
+
+            <div class="logo">
+                <svg viewBox="0 0 24 24">
+                    <path d="M12 1a9 9 0 0 0-9 9v7c0 1.66 1.34 3 3 3h3v-8H5v-2c0-3.87 3.13-7 7-7s7 3.13 7 7v2h-4v8h3c1.66 0 3-1.34 3-3v-7a9 9 0 0 0-9-9z"/>
+                </svg>
+            </div>
+
+            <h1>VoiceAgent AI</h1>
+            <p class="tagline">
+                Say <strong>"hello makoti"</strong> &mdash; take full voice control<br>
+                of your Android phone. <strong>English</strong> &amp; <strong>Kiswahili</strong>.
+            </p>
+
+            <div class="specs">
+                <span>&#x1F4E6; 12 MB</span>
+                <span>&#x1F7E2; Android 8+</span>
+                <span>&#x2699;&#xFE0F; ARM64 / ARM32</span>
+                <span>&#x1F512; Signed</span>
+            </div>
+        </div>
+
+        <!-- Features -->
+        <div class="features">
+            <div class="feat">
+                <span class="icon">&#x1F399;&#xFE0F;</span>
+                <span class="lbl">Always-on</span>
+                <span class="sub">Background service</span>
+            </div>
+            <div class="feat">
+                <span class="icon">&#x23F0;</span>
+                <span class="lbl">Wake word</span>
+                <span class="sub">"hello makoti"</span>
+            </div>
+            <div class="feat">
+                <span class="icon">&#x1F5E8;&#xFE0F;</span>
+                <span class="lbl">Auto-start</span>
+                <span class="sub">On boot</span>
+            </div>
+            <div class="feat">
+                <span class="icon">&#x1F4A1;</span>
+                <span class="lbl">Torch</span>
+                <span class="sub">Flash control</span>
+            </div>
+            <div class="feat">
+                <span class="icon">&#x1F50A;</span>
+                <span class="lbl">Volume</span>
+                <span class="sub">System audio</span>
+            </div>
+            <div class="feat">
+                <span class="icon">&#x1F4F1;</span>
+                <span class="lbl">Apps</span>
+                <span class="sub">Open anything</span>
+            </div>
+            <div class="feat">
+                <span class="icon">&#x1F514;</span>
+                <span class="lbl">Notifications</span>
+                <span class="sub">Read aloud</span>
+            </div>
+            <div class="feat">
+                <span class="icon">&#x1F4F7;</span>
+                <span class="lbl">Photo</span>
+                <span class="sub">Camera launch</span>
+            </div>
+            <div class="feat">
+                <span class="icon">&#x1F4DE;</span>
+                <span class="lbl">Call / SMS</span>
+                <span class="sub">Voice dial</span>
+            </div>
+        </div>
+
+        <!-- Languages -->
+        <div class="lang-banner">
+            <span class="flag">&#x1F1EC;&#x1F1E7;</span>
+            <span class="text"><strong>English</strong> &amp; <strong>Kiswahili</strong></span>
+            <span class="divider"></span>
+            <span class="flag">&#x1F1F0;&#x1F1EA;</span>
+            <span class="text">Same voice &rarr; same action</span>
+        </div>
+
+        <!-- Download Card -->
+        <div class="download-card">
+            <div class="file-row">
+                <span class="icon">&#x1F4E6;</span>
+                <div class="info">
+                    <div class="name">VoiceAgent-v2.1.apk</div>
+                    <div class="meta" id="apkMeta">Built by GitHub Actions &middot; 12 MB</div>
+                </div>
+            </div>
+
+            <a id="downloadBtn"
+               class="btn-download"
+               href="#"
+               data-github-user="makoti942"
+               data-github-repo="mrai">
+                <span class="glow"></span>
+                <span class="bicon">&#x2B07;</span>
+                <span class="btxt">Download APK</span>
+                <span class="spin"></span>
+            </a>
+
+            <div class="secure">
+                &#x1F512; Auto-built by GitHub Actions &middot; No compiler needed
+            </div>
+            <div class="mirror-note">
+                <span id="buildStatus">&#x23F3; Waiting for first build...</span>
+            </div>
+        </div>
+
+        <!-- How to install -->
+        <div class="steps-section">
+            <h3>Install in 30 seconds</h3>
+            <div class="step">
+                <span class="num">1</span>
+                <span class="txt">Tap <strong>Download APK</strong> &mdash; saves to your phone.</span>
+            </div>
+            <div class="step">
+                <span class="num">2</span>
+                <span class="txt">Open the downloaded file from notifications or Downloads.</span>
+            </div>
+            <div class="step">
+                <span class="num">3</span>
+                <span class="txt">If asked, enable <strong>Install unknown apps</strong> for your browser.</span>
+            </div>
+            <div class="step">
+                <span class="num">4</span>
+                <span class="txt">Grant <strong>Microphone, Camera, Notification</strong> permissions.</span>
+            </div>
+            <div class="step">
+                <span class="num">5</span>
+                <span class="txt">Say <strong>"hello makoti"</strong> &mdash; that's it!</span>
+            </div>
+        </div>
+
+        <!-- Example commands -->
+        <div class="cmds">
+            <h3>Try saying</h3>
+            <div class="cmd-grid">
+                <div class="cmd-item">
+                    <span class="en">"washa taa"</span>
+                    <span class="sw">Turn on flashlight</span>
+                </div>
+                <div class="cmd-item">
+                    <span class="en">"volume 50"</span>
+                    <span class="sw">Set media volume</span>
+                </div>
+                <div class="cmd-item">
+                    <span class="en">"fungua kamera"</span>
+                    <span class="sw">Open camera app</span>
+                </div>
+                <div class="cmd-item">
+                    <span class="en">"soma taarifa"</span>
+                    <span class="sw">Read notifications</span>
+                </div>
+                <div class="cmd-item">
+                    <span class="en">"piga simu 0712..."</span>
+                    <span class="sw">Call a number</span>
+                </div>
+                <div class="cmd-item">
+                    <span class="en">"zima taa"</span>
+                    <span class="sw">Turn off flashlight</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <div class="footer">
+            <a href="https://github.com/makoti942/mrai" target="_blank">GitHub</a>
+            &middot; Apache 2.0 &middot; Open Source<br>
+            <span class="hash">Built entirely from source via GitHub Actions</span>
+        </div>
+
+    </div>
+
+    <div id="toast" class="toast"></div>
+
+    <script src="/app.js"></script>
+
+    <script>
+        (function () {
+            'use strict';
+
+            var btn = document.getElementById('downloadBtn');
+            var buildStatus = document.getElementById('buildStatus');
+            var apkMeta = document.getElementById('apkMeta');
+
+            var GH_USER = btn.getAttribute('data-github-user');
+            var GH_REPO = btn.getAttribute('data-github-repo');
+
+            // ── Detect if this is YOUR_GITHUB_USERNAME placeholder ──
+            function isDemo() {
+                return !GH_USER || GH_USER === 'YOUR_GITHUB_USERNAME';
+            }
+
+            // ── Build URLs ──
+            function releaseUrl(tag) {
+                return 'https://github.com/' + GH_USER + '/' + GH_REPO + '/releases/download/' + tag + '/app-debug.apk';
+            }
+            function latestReleaseUrl() {
+                return 'https://github.com/' + GH_USER + '/' + GH_REPO + '/releases/latest/download/app-debug.apk';
+            }
+            function actionsArtifactUrl(runId) {
+                return 'https://github.com/' + GH_USER + '/' + GH_REPO + '/actions/runs/' + runId + '/artifacts';
+            }
+            function repoUrl() {
+                return 'https://github.com/' + GH_USER + '/' + GH_REPO;
+            }
+
+            // ── Toast ──
+            function toast(msg) {
+                var el = document.getElementById('toast');
+                if (!el) return;
+                el.textContent = msg;
+                el.classList.add('show');
+                setTimeout(function () { el.classList.remove('show'); }, 3500);
+            }
+
+            // ── Try to find the APK from GitHub ──
+            function findApkUrl(callback) {
+                if (isDemo()) {
+                    buildStatus.textContent = '&#x26A0;&#xFE0F; Configure your GitHub repo in index.html';
+                    buildStatus.style.color = '#ffaa44';
+                    callback(null);
+                    return;
+                }
+
+                // Try the latest release first
+                var xhr = new XMLHttpRequest();
+                xhr.open('HEAD', latestReleaseUrl(), true);
+                xhr.onreadystatechange = function () {
+                    if (xhr.readyState === 4) {
+                        if (xhr.status === 200 || xhr.status === 302) {
+                            buildStatus.textContent = '&#x2705; APK ready from GitHub Releases';
+                            buildStatus.style.color = '#4dc9f6';
+                            callback(latestReleaseUrl());
+                        } else {
+                            // No release yet — link to Actions
+                            buildStatus.textContent = '&#x23F3; First build running... check Actions tab';
+                            buildStatus.style.color = '#ffaa44';
+                            callback(repoUrl() + '/actions');
+                        }
+                    }
+                };
+                xhr.send();
+            }
+
+            // ── Download function ──
+            function doDownload(url, name) {
+                btn.classList.add('loading');
+                toast('Download starting...');
+
+                // If URL is a GitHub page (not direct APK), open in new tab
+                if (!url.endsWith('.apk')) {
+                    window.open(url, '_blank');
+                    btn.classList.remove('loading');
+                    toast('Redirecting to GitHub...');
+                    return;
+                }
+
+                // Method 1: anchor with download attribute
+                var a = document.createElement('a');
+                a.href = url;
+                a.download = name || 'VoiceAgent-v2.1.apk';
+                a.rel = 'noopener noreferrer';
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+
+                // Method 2 (fallback): fetch with binary headers
+                var fallbackTimer = setTimeout(function () {
+                    fetch(url, {
+                        method: 'GET',
+                        headers: {
+                            'Accept': 'application/vnd.android.package-archive, application/octet-stream, */*',
+                        },
+                    })
+                    .then(function (r) {
+                        if (!r.ok) throw new Error('HTTP ' + r.status);
+                        return r.blob();
+                    })
+                    .then(function (blob) {
+                        var blobUrl = URL.createObjectURL(blob);
+                        var a2 = document.createElement('a');
+                        a2.href = blobUrl;
+                        a2.download = name || 'VoiceAgent-v2.1.apk';
+                        document.body.appendChild(a2);
+                        a2.click();
+                        document.body.removeChild(a2);
+                        setTimeout(function () { URL.revokeObjectURL(blobUrl); }, 10000);
+                        btn.classList.remove('loading');
+                    })
+                    .catch(function () {
+                        window.location.href = url;
+                        btn.classList.remove('loading');
+                    });
+                }, 1500);
+
+                document.addEventListener('visibilitychange', function onVis() {
+                    if (document.hidden) {
+                        clearTimeout(fallbackTimer);
+                        btn.classList.remove('loading');
+                        document.removeEventListener('visibilitychange', onVis);
+                    }
+                });
+            }
+
+            // ── Click handler ──
+            btn.addEventListener('click', function (e) {
+                e.preventDefault();
+                if (isDemo()) {
+                    toast('Set your GitHub username in index.html first!');
+                    window.open('https://github.com/new', '_blank');
+                    return;
+                }
+                findApkUrl(function (url) {
+                    if (url) {
+                        doDownload(url, 'VoiceAgent-v2.1.apk');
+                    } else {
+                        toast('No APK found. Push code to GitHub to build it.');
+                        window.open(repoUrl() + '/actions', '_blank');
+                    }
+                });
+            });
+
+            // ── On load, check status ──
+            if (!isDemo()) {
+                findApkUrl(function (url) {
+                    if (url && url.endsWith('.apk')) {
+                        btn.setAttribute('href', url);
+                        apkMeta.textContent = 'Hosted on GitHub Releases &middot; ~12 MB';
+                    }
+                });
+            } else {
+                buildStatus.innerHTML = '&#x26A0;&#xFE0F; Set YOUR_GITHUB_USERNAME in the HTML to enable downloads';
+            }
+
+            console.log('VoiceAgent page loaded. GitHub:', GH_USER + '/' + GH_REPO);
+        })();
+    </script>
+
+</body>
+</html>
