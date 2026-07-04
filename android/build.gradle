@@ -8,13 +8,6 @@ buildscript {
     }
 }
 
-allprojects {
-    repositories {
-        google()
-        mavenCentral()
-    }
-}
-
 ext {
     compileSdk = 34
     minSdk = 26
