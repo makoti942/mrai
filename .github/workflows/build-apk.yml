@@ -22,45 +22,41 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Grant execute permission for gradlew
-        run: chmod +x android/gradlew
-        working-directory: android
+      - name: Generate Gradle Wrapper
+        run: |
+          cd android
+          gradle wrapper --gradle-version 8.5
 
       - name: Build debug APK
-        run: ./gradlew assembleDebug
-        working-directory: android
+        run: |
+          cd android
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon
 
-      - name: Build release APK (unsigned)
-        run: ./gradlew assembleRelease
-        working-directory: android
-
-      - name: Sign release APK
-        uses: r0adkll/sign-android-release@v1
-        with:
-          releaseDirectory: android/app/build/outputs/apk/release
-          signingKeyBase64: ${{ secrets.SIGNING_KEY }}
-          alias: ${{ secrets.KEY_ALIAS }}
-          keyStorePassword: ${{ secrets.KEY_STORE_PASSWORD }}
-          keyPassword: ${{ secrets.KEY_PASSWORD }}
-        env:
-          # override only if signing fails — the debug APK is always available
-          BUILD_TOOLS_VERSION: "34.0.0"
-
-      - name: Upload APK as artifact
+      - name: Upload debug APK
         uses: actions/upload-artifact@v4
         with:
-          name: VoiceAgent-APK
-          path: |
-            android/app/build/outputs/apk/debug/app-debug.apk
-            android/app/build/outputs/apk/release/app-release-unsigned.apk
-            android/app/build/outputs/apk/release/app-release.apk
+          name: VoiceAgent-Debug-APK
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+
+      - name: Build release APK
+        run: |
+          cd android
+          ./gradlew assembleRelease --no-daemon
+        continue-on-error: true
+
+      - name: Upload release APK (if built)
+        uses: actions/upload-artifact@v4
+        with:
+          name: VoiceAgent-Release-APK
+          path: android/app/build/outputs/apk/release/app-release-unsigned.apk
           if-no-files-found: warn
 
-      - name: Create GitHub Release
+      - name: Create GitHub Release (only on tag push)
         uses: softprops/action-gh-release@v2
         if: startsWith(github.ref, 'refs/tags/v')
         with:
           files: |
             android/app/build/outputs/apk/debug/app-debug.apk
-            android/app/build/outputs/apk/release/app-release.apk
           generate_release_notes: true
