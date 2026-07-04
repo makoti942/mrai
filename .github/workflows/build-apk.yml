@@ -22,17 +22,28 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v3
-        with:
-          gradle-version: 8.5
-
-      - name: Generate wrapper and build
+      - name: Build APK
         run: |
+          echo "=== Checking tools ==="
+          echo "JAVA_HOME=$JAVA_HOME"
+          which java && java -version
+          echo "ANDROID_HOME=/usr/local/lib/android/sdk"
+          ls /usr/local/lib/android/sdk/ 2>&1
+          ls /usr/local/lib/android/sdk/platforms/ 2>&1
+
+          echo "=== Creating wrapper ==="
           cd android
-          gradle wrapper --gradle-version 8.5
+          gradle wrapper --gradle-version 8.5 2>&1
+          echo "wrapper exit: $?"
+
+          echo "=== Wrapper files ==="
+          ls -la gradlew 2>&1
+          ls -la gradle/wrapper/ 2>&1
+
+          echo "=== Building ==="
           chmod +x gradlew
-          ./gradlew assembleDebug --no-daemon --stacktrace
+          ./gradlew assembleDebug --no-daemon --stacktrace 2>&1
+          echo "build exit: $?"
         env:
           ANDROID_HOME: /usr/local/lib/android/sdk
           ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
