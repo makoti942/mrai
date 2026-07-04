@@ -660,9 +660,16 @@ public class MainActivity extends Activity {
                     useCloudSTT = true;
                     startCloudListening();
                 } else {
-                    addLog("No AI API key set. Type: set api key YOUR_KEY");
-                    addLog("Use 🎤 button for voice, or type commands below");
-                    initRecognizer();
+                    addLog("No AI API key set. Type: 'set api key YOUR_GOOGLE_KEY' in the console");
+                    addLog("Until then, use the 🎤 mic button or type commands below");
+                    addLog("");
+                    addLog("╔══════════════════════════════════════════╗");
+                    addLog("║ To get a FREE Google Cloud API key:     ║");
+                    addLog("║ 1. Go to console.cloud.google.com       ║");
+                    addLog("║ 2. Create project → Enable Speech API  ║");
+                    addLog("║ 3. Credentials → Create API key         ║");
+                    addLog("║ 4. Type: set api key YOUR_KEY_HERE      ║");
+                    addLog("╚══════════════════════════════════════════╝");
                 }
                 registerBootReceiver();
                 addLog("Service ready. Say \"hello makoti\" or type a command");
@@ -1643,9 +1650,11 @@ public class MainActivity extends Activity {
             apiKey = key.trim();
             try {
                 getSharedPreferences("voiceagent", MODE_PRIVATE).edit().putString("api_key", apiKey).apply();
-                addLog("AI API key saved. Restarting with cloud STT...");
-                useCloudSTT = true;
+                // Stop the broken recognizer
+                if (recognizer != null) { try { recognizer.destroy(); } catch (Exception e) {} recognizer = null; }
                 recognizerError = false;
+                useCloudSTT = true;
+                addLog("AI API key saved! Starting cloud STT...");
                 startCloudListening();
             } catch (Exception e) { addLog("Save key error: " + e.getMessage()); }
         }
