@@ -19,7 +19,10 @@ import android.database.Cursor;
 import android.hardware.camera2.CameraAccessException;
 import android.hardware.camera2.CameraCharacteristics;
 import android.hardware.camera2.CameraManager;
+import android.media.AudioFormat;
 import android.media.AudioManager;
+import android.media.AudioRecord;
+import android.media.MediaRecorder;
 import android.net.Uri;
 import android.net.wifi.WifiManager;
 import android.os.Build;
@@ -50,6 +53,11 @@ import androidx.core.app.ActivityCompat;
 import androidx.core.app.NotificationCompat;
 import androidx.core.content.ContextCompat;
 
+import java.io.ByteArrayOutputStream;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.net.HttpURLConnection;
+import java.net.URL;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -60,6 +68,9 @@ import java.util.Map;
 import java.util.Random;
 import java.util.Set;
 import java.util.UUID;
+
+import org.json.JSONArray;
+import org.json.JSONObject;
 
 public class MainActivity extends Activity {
 
@@ -604,8 +615,16 @@ public class MainActivity extends Activity {
         private boolean commandMode = false;
         private boolean ttsSpeaking = false;
         private boolean recognizerError = false;
+        private boolean useCloudSTT = false;
         private int errorCount = 0;
         private int maxVolume;
+
+        // Cloud AI speech-to-text
+        private AudioRecord audioRecord;
+        private volatile boolean aiListening = false;
+        private Thread aiThread;
+        private String apiKey = "";
+        private static final int SAMPLE_RATE = 16000;
 
         private final Handler handler = new Handler(Looper.getMainLooper());
         private Runnable wakeTimeoutRunnable;
@@ -635,9 +654,18 @@ public class MainActivity extends Activity {
 
                 findTorch();
                 initTts();
-                initRecognizer();
+                loadApiKey();
+                if (!apiKey.isEmpty()) {
+                    addLog("Cloud AI STT configured. Starting continuous listening...");
+                    useCloudSTT = true;
+                    startCloudListening();
+                } else {
+                    addLog("No AI API key set. Type: set api key YOUR_KEY");
+                    addLog("Use 🎤 button for voice, or type commands below");
+                    initRecognizer();
+                }
                 registerBootReceiver();
-                addLog("Service ready. Say \"hello makoti\"");
+                addLog("Service ready. Say \"hello makoti\" or type a command");
             } catch (Exception e) {
                 Log.e(TAG, "Service init error", e);
                 addLog("Init error: " + e.getMessage());
@@ -1602,11 +1630,225 @@ public class MainActivity extends Activity {
         @Override
         public IBinder onBind(Intent intent) { return null; }
 
+        // ─── Cloud AI Speech-To-Text ──────────────────────
+
+        private void loadApiKey() {
+            try {
+                apiKey = getSharedPreferences("voiceagent", MODE_PRIVATE).getString("api_key", "");
+                if (!apiKey.isEmpty()) addLog("Cloud AI key loaded");
+            } catch (Exception e) { addLog("Load key error: " + e.getMessage()); }
+        }
+
+        private void saveApiKey(String key) {
+            apiKey = key.trim();
+            try {
+                getSharedPreferences("voiceagent", MODE_PRIVATE).edit().putString("api_key", apiKey).apply();
+                addLog("AI API key saved. Restarting with cloud STT...");
+                useCloudSTT = true;
+                recognizerError = false;
+                startCloudListening();
+            } catch (Exception e) { addLog("Save key error: " + e.getMessage()); }
+        }
+
+        private void startCloudListening() {
+            if (apiKey.isEmpty()) {
+                addLog("Cannot start: no API key. Type: set api key YOUR_GOOGLE_API_KEY");
+                return;
+            }
+            aiListening = true;
+            aiThread = new Thread(this::audioLoop);
+            aiThread.setDaemon(true);
+            aiThread.start();
+            addLog("Cloud AI listening started (Google Cloud STT)");
+        }
+
+        private void stopCloudListening() {
+            aiListening = false;
+            if (audioRecord != null) {
+                try { audioRecord.stop(); } catch (Exception e) {}
+                audioRecord.release();
+                audioRecord = null;
+            }
+            aiThread = null;
+        }
+
+        private void audioLoop() {
+            int bufferSize = AudioRecord.getMinBufferSize(SAMPLE_RATE,
+                AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT);
+            bufferSize = Math.max(bufferSize, SAMPLE_RATE * 4);
+
+            audioRecord = new AudioRecord(MediaRecorder.AudioSource.MIC,
+                SAMPLE_RATE, AudioFormat.CHANNEL_IN_MONO,
+                AudioFormat.ENCODING_PCM_16BIT, bufferSize);
+
+            if (audioRecord.getState() != AudioRecord.STATE_INITIALIZED) {
+                addLog("AudioRecord failed. Check mic permission.");
+                return;
+            }
+
+            audioRecord.startRecording();
+            addLog("🎤 Microphone active (" + SAMPLE_RATE + "Hz)");
+
+            byte[] chunk = new byte[SAMPLE_RATE / 4]; // 250ms
+            ByteArrayOutputStream speechBuf = new ByteArrayOutputStream();
+            boolean inSpeech = false;
+            int silenceCount = 0;
+            int maxSilence = 8; // ~2 sec silence = end of speech
+            int maxBytes = SAMPLE_RATE * 15 * 2; // 15 sec max
+
+            while (aiListening && !recognizerError) {
+                int read = audioRecord.read(chunk, 0, chunk.length);
+                if (read <= 0) continue;
+
+                double energy = calculateRMS(chunk, read);
+
+                if (energy > 0.018) { // Speech detected
+                    speechBuf.write(chunk, 0, read);
+                    if (!inSpeech) {
+                        inSpeech = true;
+                        addLog("Voice detected");
+                    }
+                    silenceCount = 0;
+                    if (speechBuf.size() > maxBytes) {
+                        processAndSend(speechBuf.toByteArray());
+                        speechBuf.reset();
+                        inSpeech = false;
+                    }
+                } else { // Silence
+                    if (inSpeech) {
+                        speechBuf.write(chunk, 0, read);
+                        silenceCount++;
+                        if (silenceCount >= maxSilence) {
+                            addLog("End of speech (" + (speechBuf.size() / 32) + "ms)");
+                            byte[] audioData = speechBuf.toByteArray();
+                            speechBuf.reset();
+                            inSpeech = false;
+                            if (audioData.length > SAMPLE_RATE) {
+                                processAndSend(audioData);
+                            }
+                        }
+                    }
+                }
+            }
+
+            stopCloudListening();
+        }
+
+        private double calculateRMS(byte[] audio, int len) {
+            double sum = 0;
+            int samples = len / 2;
+            for (int i = 0; i < len - 1; i += 2) {
+                short s = (short) ((audio[i + 1] << 8) | (audio[i] & 0xFF));
+                sum += s * s;
+            }
+            return Math.sqrt(sum / samples) / 32768.0;
+        }
+
+        private void processAndSend(byte[] audioData) {
+            addLog("Sending " + (audioData.length / 32) + "ms to Google Cloud STT...");
+            new Thread(() -> {
+                String text = googleCloudSTT(audioData);
+                if (text != null && !text.isEmpty()) {
+                    addLog("STT result: \"" + text + "\"");
+                    String finalText = text.toLowerCase().trim();
+                    handler.post(() -> processTranscript(finalText));
+                } else {
+                    addLog("STT: no speech recognized");
+                }
+            }).start();
+        }
+
+        private String googleCloudSTT(byte[] audioData) {
+            try {
+                String b64 = android.util.Base64.encodeToString(audioData, android.util.Base64.NO_WRAP);
+
+                JSONObject config = new JSONObject();
+                config.put("encoding", "LINEAR16");
+                config.put("sampleRateHertz", SAMPLE_RATE);
+                config.put("languageCode", "en-US");
+                config.put("model", "latest_short");
+
+                JSONObject audio = new JSONObject();
+                audio.put("content", b64);
+
+                JSONObject body = new JSONObject();
+                body.put("config", config);
+                body.put("audio", audio);
+
+                URL url = new URL("https://speech.googleapis.com/v1/speech:recognize?key=" + apiKey);
+                HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+                conn.setRequestMethod("POST");
+                conn.setRequestProperty("Content-Type", "application/json");
+                conn.setDoOutput(true);
+                conn.setConnectTimeout(15000);
+                conn.setReadTimeout(15000);
+
+                try (OutputStream os = conn.getOutputStream()) {
+                    os.write(body.toString().getBytes());
+                }
+
+                int code = conn.getResponseCode();
+                if (code == 200) {
+                    try (InputStream is = conn.getInputStream()) {
+                        String resp = new java.util.Scanner(is).useDelimiter("\\A").next();
+                        JSONObject json = new JSONObject(resp);
+                        JSONArray results = json.optJSONArray("results");
+                        if (results != null && results.length() > 0) {
+                            JSONArray alts = results.getJSONObject(0).optJSONArray("alternatives");
+                            if (alts != null && alts.length() > 0) {
+                                return alts.getJSONObject(0).optString("transcript", null);
+                            }
+                        }
+                    }
+                } else {
+                    try (InputStream es = conn.getErrorStream()) {
+                        String err = es != null ? new java.util.Scanner(es).useDelimiter("\\A").next() : "HTTP " + code;
+                        addLog("STT API error (" + code + "): " + err);
+                    }
+                }
+            } catch (Exception e) {
+                addLog("STT error: " + e.getClass().getSimpleName() + ": " + e.getMessage());
+            }
+            return null;
+        }
+
         @Override
         public int onStartCommand(Intent intent, int flags, int startId) {
             if (intent != null && intent.hasExtra("text_command")) {
-                String cmd = intent.getStringExtra("text_command");
+                String cmd = intent.getStringExtra("text_command").trim();
                 addLog("Text command: " + cmd);
+
+                // Handle special commands
+                if (cmd.toLowerCase().startsWith("set api key ")) {
+                    String key = cmd.substring("set api key ".length()).trim();
+                    if (!key.isEmpty()) {
+                        saveApiKey(key);
+                        speak("API key saved");
+                    }
+                    return START_STICKY;
+                }
+                if (cmd.toLowerCase().startsWith("api key ")) {
+                    String key = cmd.substring("api key ".length()).trim();
+                    if (!key.isEmpty()) {
+                        saveApiKey(key);
+                        speak("API key saved");
+                    }
+                    return START_STICKY;
+                }
+                if (cmd.toLowerCase().equals("stop listening") || cmd.toLowerCase().equals("stop ai")) {
+                    stopCloudListening();
+                    addLog("Cloud listening stopped");
+                    return START_STICKY;
+                }
+                if (cmd.toLowerCase().equals("start ai") || cmd.toLowerCase().equals("start listening")) {
+                    if (!apiKey.isEmpty()) {
+                        startCloudListening();
+                    } else {
+                        addLog("Set API key first: set api key YOUR_KEY");
+                    }
+                    return START_STICKY;
+                }
+
                 // If awake and in command mode, process directly
                 if (commandMode || wakeWordDetected) {
                     cancelWakeTimeout();
@@ -1625,6 +1867,7 @@ public class MainActivity extends Activity {
 
         @Override
         public void onDestroy() {
+            stopCloudListening();
             if (recognizer != null) { recognizer.destroy(); recognizer = null; }
             if (tts != null) { tts.stop(); tts.shutdown(); tts = null; }
             if (wakeLock != null && wakeLock.isHeld()) { wakeLock.release(); }
