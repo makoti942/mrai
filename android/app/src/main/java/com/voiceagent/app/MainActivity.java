@@ -569,6 +569,8 @@ public class MainActivity extends Activity {
         private boolean wakeWordDetected = false;
         private boolean commandMode = false;
         private boolean ttsSpeaking = false;
+        private boolean recognizerError = false;
+        private int errorCount = 0;
         private int maxVolume;
 
         private final Handler handler = new Handler(Looper.getMainLooper());
@@ -751,8 +753,10 @@ public class MainActivity extends Activity {
                     else if (code == SpeechRecognizer.ERROR_SPEECH_TIMEOUT) err = "timeout";
                     else if (code == SpeechRecognizer.ERROR_NETWORK) err = "network";
                     else if (code == SpeechRecognizer.ERROR_CLIENT) err = "client";
-                    addLog("Recognizer error: " + err);
-                    if (!ttsSpeaking) handler.postDelayed(() -> startListening(), 500);
+                    errorCount++;
+                    addLog("Recognizer error: " + err + " (#" + errorCount + ")");
+                    long delay = Math.min(errorCount * 1000, 5000);
+                    if (!ttsSpeaking) handler.postDelayed(() -> startListening(), delay);
                 }
                 @Override public void onResults(Bundle res) {
                     ArrayList<String> matches = res.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION);
@@ -775,13 +779,13 @@ public class MainActivity extends Activity {
             try {
                 Intent intent = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
                 intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
-                intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE, "sw-TZ");
-                intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, "sw-TZ,en-US");
+                intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE, "en-US");
+                intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, "en-US,sw-TZ");
                 intent.putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, getPackageName());
                 intent.putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, false);
                 intent.putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 5);
-                intent.putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 200);
-                intent.putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 600);
+                intent.putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 800);
+                intent.putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 1500);
                 recognizer.startListening(intent);
                 isListening = true;
                 updateNotif("Listening...");
@@ -1218,13 +1222,14 @@ public class MainActivity extends Activity {
         private boolean openAnyApp(String name) {
             if (name == null || name.isEmpty()) return false;
             String lower = name.toLowerCase().trim();
+            addLog("Opening app: " + lower);
 
             // Direct known apps
             Intent known = resolveKnownApp(lower);
             if (known != null) {
                 known.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                try { startActivity(known); speak("Opening"); return true; }
-                catch (Exception e) { /* fall through */ }
+                try { startActivity(known); speak("Opening"); addLog("Opened via known intent"); return true; }
+                catch (Exception e) { addLog("Known intent failed: " + e.getMessage()); }
             }
 
             // Find by package
@@ -1233,8 +1238,8 @@ public class MainActivity extends Activity {
                 Intent launch = getPackageManager().getLaunchIntentForPackage(pkg);
                 if (launch != null) {
                     launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                    try { startActivity(launch); speak("Opening"); return true; }
-                    catch (Exception e) { /* fall through */ }
+                    try { startActivity(launch); speak("Opening"); addLog("Opened package: " + pkg); return true; }
+                    catch (Exception e) { addLog("Package launch failed: " + e.getMessage()); }
                 }
             }
 
@@ -1242,24 +1247,29 @@ public class MainActivity extends Activity {
             Intent mainIntent = new Intent(Intent.ACTION_MAIN);
             mainIntent.addCategory(Intent.CATEGORY_LAUNCHER);
             List<ResolveInfo> apps = getPackageManager().queryIntentActivities(mainIntent, 0);
-            double bestScore = 0.25;
+            addLog("Searching " + apps.size() + " installed apps");
+            double bestScore = 0.18;
             String bestPkg = null;
+            String bestLabel = null;
             for (ResolveInfo ri : apps) {
                 String label = ri.loadLabel(getPackageManager()).toString().toLowerCase();
                 double sim = SemanticEngine.charNGramSimilarity(lower, label);
                 if (sim > bestScore) {
                     bestScore = sim;
                     bestPkg = ri.activityInfo.packageName;
+                    bestLabel = label;
                 }
             }
             if (bestPkg != null) {
+                addLog("Best match: " + bestLabel + " (" + bestPkg + ") score=" + String.format("%.2f", bestScore));
                 Intent launch = getPackageManager().getLaunchIntentForPackage(bestPkg);
                 if (launch != null) {
                     launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
                     try { startActivity(launch); speak("Done"); return true; }
-                    catch (Exception e) { return false; }
+                    catch (Exception e) { addLog("Launch failed: " + e.getMessage()); return false; }
                 }
             }
+            addLog("No app found for: " + lower);
             return false;
         }
 
@@ -1280,10 +1290,24 @@ public class MainActivity extends Activity {
                 return new Intent(Intent.ACTION_VIEW, Uri.parse("geo:0,0?q="));
             if (name.contains("youtube"))
                 return new Intent(Intent.ACTION_VIEW).setPackage("com.google.android.youtube");
-            if (name.contains("whatsapp") || name.contains("whatasapp"))
+            if (name.contains("whatsapp") || name.contains("whatasapp") || name.contains("watsap"))
                 return new Intent(Intent.ACTION_VIEW).setPackage("com.whatsapp");
             if (name.contains("gallery") || name.contains("picha") || name.contains("photos"))
                 return new Intent(Intent.ACTION_VIEW).setType("image/*");
+            if (name.contains("snapchat") || name.contains("snap"))
+                return new Intent(Intent.ACTION_VIEW).setPackage("com.snapchat.android");
+            if (name.contains("instagram") || name.contains("ig") || name.contains("insta"))
+                return new Intent(Intent.ACTION_VIEW).setPackage("com.instagram.android");
+            if (name.contains("telegram"))
+                return new Intent(Intent.ACTION_VIEW).setPackage("org.telegram.messenger");
+            if (name.contains("tiktok"))
+                return new Intent(Intent.ACTION_VIEW).setPackage("com.zhiliaoapp.musically");
+            if (name.contains("facebook") || name.contains("fb") || name.contains("face"))
+                return new Intent(Intent.ACTION_VIEW).setPackage("com.facebook.katana");
+            if (name.contains("twitter") || name.contains("x ") || name.contains("x.com"))
+                return new Intent(Intent.ACTION_VIEW).setPackage("com.twitter.android");
+            if (name.contains("gmail") || name.contains("email") || name.contains("mail"))
+                return new Intent(Intent.ACTION_VIEW).setPackage("com.google.android.gm");
             return null;
         }
 
@@ -1303,9 +1327,10 @@ public class MainActivity extends Activity {
             map.put("gallery", "com.android.gallery3d");
             map.put("twitter", "com.twitter.android");
             map.put("facebook", "com.facebook.katana");
+            map.put("snapchat", "com.snapchat.android");
             map.put("instagram", "com.instagram.android");
-            map.put("telegram", "org.telegram.messenger");
             map.put("tiktok", "com.zhiliaoapp.musically");
+            map.put("telegram", "org.telegram.messenger");
             map.put("gmail", "com.google.android.gm");
             map.put("email", "com.google.android.gm");
             map.put("play store", "com.android.vending");
