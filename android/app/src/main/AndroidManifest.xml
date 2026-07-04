@@ -95,6 +95,14 @@
             </intent-filter>
         </receiver>
 
+        <!-- Transparent voice capture activity (launches Google's voice dialog) -->
+        <activity
+            android:name=".VoiceCaptureActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar"
+            android:launchMode="singleTask" />
+
         <!-- Notification Listener Service (for reading notifications) -->
         <service
             android:name=".NotificationListener"

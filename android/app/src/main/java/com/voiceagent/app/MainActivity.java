@@ -660,16 +660,10 @@ public class MainActivity extends Activity {
                     useCloudSTT = true;
                     startCloudListening();
                 } else {
-                    addLog("No AI API key set. Type: 'set api key YOUR_GOOGLE_KEY' in the console");
-                    addLog("Until then, use the 🎤 mic button or type commands below");
-                    addLog("");
-                    addLog("╔══════════════════════════════════════════╗");
-                    addLog("║ To get a FREE Google Cloud API key:     ║");
-                    addLog("║ 1. Go to console.cloud.google.com       ║");
-                    addLog("║ 2. Create project → Enable Speech API  ║");
-                    addLog("║ 3. Credentials → Create API key         ║");
-                    addLog("║ 4. Type: set api key YOUR_KEY_HERE      ║");
-                    addLog("╚══════════════════════════════════════════╝");
+                    addLog("Starting hands-free mode (Google voice + AudioRecord)...");
+                    addLog("Say something — the Google voice dialog will appear");
+                    useCloudSTT = false;
+                    startAudioWakeDetection();
                 }
                 registerBootReceiver();
                 addLog("Service ready. Say \"hello makoti\" or type a command");
@@ -1637,7 +1631,101 @@ public class MainActivity extends Activity {
         @Override
         public IBinder onBind(Intent intent) { return null; }
 
-        // ─── Cloud AI Speech-To-Text ──────────────────────
+        // ─── Audio Wake Detection (free, no API key needed) ──
+        // Uses AudioRecord + energy VAD. When speech detected,
+        // launches Google's voice activity which works on all devices.
+
+        private boolean wakeDetectionRunning = false;
+        private Thread wakeThread;
+
+        private void startAudioWakeDetection() {
+            if (wakeDetectionRunning) return;
+            wakeDetectionRunning = true;
+            wakeThread = new Thread(this::wakeDetectionLoop);
+            wakeThread.setDaemon(true);
+            wakeThread.start();
+            addLog("Wake detection active (AudioRecord + Google Voice)");
+        }
+
+        private void stopAudioWakeDetection() {
+            wakeDetectionRunning = false;
+            if (wakeThread != null) {
+                wakeThread.interrupt();
+                wakeThread = null;
+            }
+        }
+
+        private void wakeDetectionLoop() {
+            int bufSize = AudioRecord.getMinBufferSize(SAMPLE_RATE,
+                AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT);
+            bufSize = Math.max(bufSize, SAMPLE_RATE * 2);
+
+            AudioRecord rec = null;
+            try {
+                rec = new AudioRecord(MediaRecorder.AudioSource.MIC,
+                    SAMPLE_RATE, AudioFormat.CHANNEL_IN_MONO,
+                    AudioFormat.ENCODING_PCM_16BIT, bufSize);
+                if (rec.getState() != AudioRecord.STATE_INITIALIZED) {
+                    addLog("Wake: AudioRecord init failed");
+                    return;
+                }
+
+                rec.startRecording();
+                byte[] buf = new byte[SAMPLE_RATE / 4]; // 250ms
+                int speechFrames = 0;
+                int silenceFrames = 0;
+                boolean wasSpeaking = false;
+
+                while (wakeDetectionRunning && !commandMode && !wakeWordDetected) {
+                    int read = rec.read(buf, 0, buf.length);
+                    if (read <= 0) continue;
+
+                    double energy = calculateRMS(buf, read);
+                    boolean speaking = energy > 0.018;
+
+                    if (speaking) {
+                        speechFrames++;
+                        silenceFrames = 0;
+                        if (speechFrames > 4 && !wasSpeaking) { // ~1 sec continuous speech
+                            wasSpeaking = true;
+                            addLog("Voice detected — waiting for end of speech");
+                        }
+                    } else {
+                        if (wasSpeaking) {
+                            silenceFrames++;
+                            if (silenceFrames > 6) { // ~1.5 sec silence
+                                addLog("End of speech — launching Google Voice");
+                                wasSpeaking = false;
+                                speechFrames = 0;
+                                silenceFrames = 0;
+                                // Launch Google's voice activity
+                                Intent cap = new Intent(VoiceCommandService.this, VoiceCaptureActivity.class);
+                                cap.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                                try { startActivity(cap); }
+                                catch (Exception e) { addLog("Launch voice capture error: " + e.getMessage()); }
+                                // Pause detection while activity is running
+                                try { Thread.sleep(15000); } catch (InterruptedException e) { break; }
+                            }
+                        }
+                        speechFrames = Math.max(0, speechFrames - 1);
+                    }
+                }
+            } catch (Exception e) {
+                addLog("Wake detection error: " + e.getMessage());
+            } finally {
+                if (rec != null) {
+                    try { rec.stop(); } catch (Exception e) {}
+                    rec.release();
+                }
+                wakeDetectionRunning = false;
+                // Restart if service is still active
+                if (!commandMode && !wakeWordDetected) {
+                    handler.postDelayed(this::startAudioWakeDetection, 2000);
+                }
+            }
+        }
+
+        // ─── Cloud AI Speech-To-Text (requires API key) ───
 
         private void loadApiKey() {
             try {
@@ -1877,6 +1965,7 @@ public class MainActivity extends Activity {
         @Override
         public void onDestroy() {
             stopCloudListening();
+            stopAudioWakeDetection();
             if (recognizer != null) { recognizer.destroy(); recognizer = null; }
             if (tts != null) { tts.stop(); tts.shutdown(); tts = null; }
             if (wakeLock != null && wakeLock.isHeld()) { wakeLock.release(); }
