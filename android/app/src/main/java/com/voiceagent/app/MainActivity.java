@@ -484,25 +484,32 @@ public class MainActivity extends Activity {
         public void onCreate() {
             super.onCreate();
             Log.d(TAG, "Service creating");
-            createChannel();
-            startForeground(NOTIF_ID, buildNotif("Active"));
+            try {
+                createChannel();
+                startForeground(NOTIF_ID, buildNotif("Active"));
 
-            audioManager = (AudioManager) getSystemService(AUDIO_SERVICE);
-            cameraManager = (CameraManager) getSystemService(CAMERA_SERVICE);
-            wifiManager = (WifiManager) getApplicationContext().getSystemService(WIFI_SERVICE);
-            notificationManager = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
-            vibrator = (Vibrator) getSystemService(VIBRATOR_SERVICE);
-            contentResolver = getContentResolver();
-            maxVolume = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
+                audioManager = (AudioManager) getSystemService(AUDIO_SERVICE);
+                cameraManager = (CameraManager) getSystemService(CAMERA_SERVICE);
+                wifiManager = (WifiManager) getApplicationContext().getSystemService(WIFI_SERVICE);
+                notificationManager = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
+                vibrator = (Vibrator) getSystemService(VIBRATOR_SERVICE);
+                contentResolver = getContentResolver();
+                if (audioManager != null) maxVolume = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
 
-            PowerManager pm = (PowerManager) getSystemService(POWER_SERVICE);
-            wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, TAG + ":lock");
-            wakeLock.acquire(10 * 60 * 1000L);
+                PowerManager pm = (PowerManager) getSystemService(POWER_SERVICE);
+                if (pm != null) {
+                    wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, TAG + ":lock");
+                    wakeLock.acquire(10 * 60 * 1000L);
+                }
 
-            findTorch();
-            initTts();
-            initRecognizer();
-            registerBootReceiver();
+                findTorch();
+                initTts();
+                initRecognizer();
+                registerBootReceiver();
+            } catch (Exception e) {
+                Log.e(TAG, "Service init error", e);
+                updateNotif("Init failed: " + e.getMessage());
+            }
         }
 
         private void registerBootReceiver() {
@@ -563,31 +570,39 @@ public class MainActivity extends Activity {
         // ─── TTS ────────────────────────────────────────────
 
         private void initTts() {
-            tts = new TextToSpeech(this, status -> {
-                if (status == TextToSpeech.SUCCESS) {
-                    tts.setLanguage(Locale.ENGLISH);
-                    tts.setSpeechRate(0.95f);
-                    tts.setPitch(1.0f);
-                    tts.setOnUtteranceProgressListener(new UtteranceProgressListener() {
-                        @Override public void onStart(String uid) {
-                            ttsSpeaking = true;
-                            updateNotif("Speaking...");
-                            if (recognizer != null) { try { recognizer.stopListening(); } catch (Exception e) {} }
-                        }
-                        @Override public void onDone(String uid) {
-                            ttsSpeaking = false;
-                            updateNotif("Listening...");
-                            handler.postDelayed(() -> startListening(), 150);
-                        }
-                        @Override public void onError(String uid) {
-                            ttsSpeaking = false;
-                            updateNotif("Listening...");
-                            handler.postDelayed(() -> startListening(), 150);
-                        }
-                    });
-                    startListening();
-                }
-            });
+            try {
+                tts = new TextToSpeech(this, status -> {
+                    if (status == TextToSpeech.SUCCESS) {
+                        tts.setLanguage(Locale.ENGLISH);
+                        tts.setSpeechRate(0.95f);
+                        tts.setPitch(1.0f);
+                        tts.setOnUtteranceProgressListener(new UtteranceProgressListener() {
+                            @Override public void onStart(String uid) {
+                                ttsSpeaking = true;
+                                updateNotif("Speaking...");
+                                if (recognizer != null) { try { recognizer.stopListening(); } catch (Exception e) {} }
+                            }
+                            @Override public void onDone(String uid) {
+                                ttsSpeaking = false;
+                                updateNotif("Listening...");
+                                handler.postDelayed(() -> startListening(), 150);
+                            }
+                            @Override public void onError(String uid) {
+                                ttsSpeaking = false;
+                                updateNotif("Listening...");
+                                handler.postDelayed(() -> startListening(), 150);
+                            }
+                        });
+                        startListening();
+                    } else {
+                        Log.w(TAG, "TTS init failed: " + status);
+                        updateNotif("TTS unavailable");
+                    }
+                });
+            } catch (Exception e) {
+                Log.e(TAG, "TTS error", e);
+                updateNotif("TTS error");
+            }
         }
 
         private void speak(String text) {
@@ -602,7 +617,17 @@ public class MainActivity extends Activity {
         // ─── Speech Recognizer ─────────────────────────────
 
         private void initRecognizer() {
+            if (!SpeechRecognizer.isRecognitionAvailable(this)) {
+                Log.w(TAG, "Speech recognition not available");
+                speak("Voice recognition not available. Install Google voice search.");
+                return;
+            }
             recognizer = SpeechRecognizer.createSpeechRecognizer(this);
+            if (recognizer == null) {
+                Log.w(TAG, "Failed to create SpeechRecognizer");
+                speak("Speech engine unavailable. Please install Google services.");
+                return;
+            }
             recognizer.setRecognitionListener(new RecognitionListener() {
                 @Override public void onReadyForSpeech(Bundle p) { isListening = true; updateNotif("Listening..."); }
                 @Override public void onBeginningOfSpeech() { updateNotif("Heard you"); }
@@ -611,7 +636,7 @@ public class MainActivity extends Activity {
                 @Override public void onEndOfSpeech() { isListening = false; updateNotif("Processing..."); }
                 @Override public void onError(int code) {
                     isListening = false;
-                    if (!ttsSpeaking) handler.postDelayed(() -> startListening(), 100);
+                    if (!ttsSpeaking) handler.postDelayed(() -> startListening(), 500);
                 }
                 @Override public void onResults(Bundle res) {
                     ArrayList<String> matches = res.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION);
@@ -628,7 +653,7 @@ public class MainActivity extends Activity {
         }
 
         private void startListening() {
-            if (ttsSpeaking || isListening) return;
+            if (ttsSpeaking || isListening || recognizer == null) return;
             try {
                 Intent intent = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
                 intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
@@ -644,7 +669,7 @@ public class MainActivity extends Activity {
                 updateNotif("Listening...");
             } catch (Exception e) {
                 Log.e(TAG, "Start fail", e);
-                handler.postDelayed(() -> startListening(), 1000);
+                handler.postDelayed(() -> startListening(), 2000);
             }
         }
 
