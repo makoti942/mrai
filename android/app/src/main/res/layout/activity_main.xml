@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="#0a0a1a"
+    android:padding="8dp">
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="VoiceAgent Console"
+        android:textColor="#4dc9f6"
+        android:textSize="18sp"
+        android:textStyle="bold"
+        android:padding="4dp"/>
+
+    <TextView
+        android:id="@+id/statusView"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Initializing..."
+        android:textColor="#e8e8f0"
+        android:textSize="13sp"
+        android:padding="4dp"/>
+
+    <TextView
+        android:id="@+id/logView"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:textColor="#a0a0b0"
+        android:textSize="10sp"
+        android:background="#151530"
+        android:padding="6dp"
+        android:scrollbars="vertical"
+        android:typeface="monospace"/>
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:paddingTop="4dp">
+
+        <EditText
+            android:id="@+id/inputText"
+            android:layout_width="0dp"
+            android:layout_height="44dp"
+            android:layout_weight="1"
+            android:hint="Type a command..."
+            android:textColor="#e8e8f0"
+            android:textColorHint="#666680"
+            android:background="#202040"
+            android:padding="8dp"
+            android:textSize="13sp"/>
+
+        <Button
+            android:id="@+id/sendBtn"
+            android:layout_width="wrap_content"
+            android:layout_height="44dp"
+            android:text="Send"
+            android:textColor="#e8e8f0"
+            android:backgroundTint="#4dc9f6"
+            android:paddingLeft="14dp"
+            android:paddingRight="14dp"
+            android:layout_marginLeft="6dp"/>
+
+    </LinearLayout>
+
+</LinearLayout>

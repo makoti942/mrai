@@ -39,6 +39,10 @@ import android.speech.tts.TextToSpeech;
 import android.speech.tts.UtteranceProgressListener;
 import android.util.Log;
 import android.view.WindowManager;
+import android.view.inputmethod.EditorInfo;
+import android.widget.Button;
+import android.widget.EditText;
+import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.annotation.Nullable;
@@ -93,10 +97,91 @@ public class MainActivity extends Activity {
             Manifest.permission.BIND_NOTIFICATION_LISTENER_SERVICE,
     };
 
+    private TextView logView;
+    private TextView statusView;
+    private final Handler uiHandler = new Handler(Looper.getMainLooper());
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        setContentView(R.layout.activity_main);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+
+        logView = findViewById(R.id.logView);
+        statusView = findViewById(R.id.statusView);
+
+        EditText inputText = findViewById(R.id.inputText);
+        Button sendBtn = findViewById(R.id.sendBtn);
+
+        sendBtn.setOnClickListener(v -> {
+            String cmd = inputText.getText().toString().trim();
+            if (!cmd.isEmpty()) {
+                inputText.setText("");
+                Intent svc = new Intent(this, VoiceCommandService.class);
+                svc.putExtra("text_command", cmd);
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    startForegroundService(svc);
+                } else {
+                    startService(svc);
+                }
+            }
+        });
+
+        // Enter key sends
+        inputText.setOnEditorActionListener((v, actionId, event) -> {
+            if (actionId == android.view.inputmethod.EditorInfo.IME_ACTION_SEND) {
+                sendBtn.performClick();
+                return true;
+            }
+            return false;
+        });
+
+        // Poll logs from service
+        uiHandler.post(new Runnable() {
+            @Override
+            public void run() {
+                StringBuilder sb = new StringBuilder();
+                for (String line : VoiceCommandService.debugLog) {
+                    sb.append(line).append("\n");
+                }
+                logView.setText(sb.toString());
+                // Auto-scroll
+                int scroll = logView.getLineCount() * logView.getLineHeight();
+                if (scroll > logView.getHeight()) {
+                    logView.scrollTo(0, scroll - logView.getHeight());
+                }
+                uiHandler.postDelayed(this, 400);
+            }
+        });
+
+        // Poll status
+        uiHandler.post(new Runnable() {
+            @Override
+            public void run() {
+                String status = "Not listening";
+                String notifText = "No notification";
+                try {
+                    NotificationManager nm = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
+                    if (nm != null && Build.VERSION.SDK_INT >= 23) {
+                        var active = nm.getActiveNotifications();
+                        for (var n : active) {
+                            if (n.getPackageName().equals(getPackageName())) {
+                                notifText = n.getNotification().extras
+                                    .getString(android.app.Notification.EXTRA_TEXT, "");
+                                break;
+                            }
+                        }
+                    }
+                } catch (Exception e) {}
+                if (notifText.contains("Listening")) status = "Listening for wake word...";
+                else if (notifText.contains("Speaking")) status = "Speaking...";
+                else if (notifText.contains("Heard")) status = "Heard you! Processing...";
+                else if (notifText.contains("Active")) status = "Active";
+                statusView.setText("Status: " + status);
+                uiHandler.postDelayed(this, 1000);
+            }
+        });
+
         requestPermissionsIfNeeded();
     }
 
@@ -127,8 +212,8 @@ public class MainActivity extends Activity {
         } else {
             startService(intent);
         }
+        VoiceCommandService.addLog("Service started. Say \"hello makoti\" to activate");
         Toast.makeText(this, "VoiceAgent active. Say \"hello makoti\"", Toast.LENGTH_LONG).show();
-        finish();
     }
 
     // ──────────────── BOOT RECEIVER ────────────────
@@ -456,7 +541,17 @@ public class MainActivity extends Activity {
 
         private static final String CHAN_ID = "voiceagent_channel";
         private static final int NOTIF_ID = 9001;
-        private static final long WAKE_TIMEOUT_MS = 8000;
+        private static final long WAKE_TIMEOUT_MS = 60000;
+
+        // Debug log shared with the activity
+        public static final java.util.ArrayList<String> debugLog = new java.util.ArrayList<>();
+        public static void addLog(String msg) {
+            String ts = new java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.ENGLISH).format(new java.util.Date());
+            String line = "[" + ts + "] " + msg;
+            debugLog.add(line);
+            if (debugLog.size() > 300) debugLog.remove(0);
+            android.util.Log.d(TAG, msg);
+        }
 
         private SpeechRecognizer recognizer;
         private TextToSpeech tts;
@@ -483,7 +578,7 @@ public class MainActivity extends Activity {
         @Override
         public void onCreate() {
             super.onCreate();
-            Log.d(TAG, "Service creating");
+            addLog("Service starting...");
             try {
                 createChannel();
                 startForeground(NOTIF_ID, buildNotif("Active"));
@@ -506,8 +601,10 @@ public class MainActivity extends Activity {
                 initTts();
                 initRecognizer();
                 registerBootReceiver();
+                addLog("Service ready. Say \"hello makoti\"");
             } catch (Exception e) {
                 Log.e(TAG, "Service init error", e);
+                addLog("Init error: " + e.getMessage());
                 updateNotif("Init failed: " + e.getMessage());
             }
         }
@@ -574,8 +671,21 @@ public class MainActivity extends Activity {
                 tts = new TextToSpeech(this, status -> {
                     if (status == TextToSpeech.SUCCESS) {
                         tts.setLanguage(Locale.ENGLISH);
-                        tts.setSpeechRate(0.95f);
-                        tts.setPitch(1.0f);
+                        tts.setSpeechRate(0.90f);
+                        tts.setPitch(1.3f);
+                        // Try to pick a female voice
+                        try {
+                            for (android.speech.tts.Voice v : tts.getVoices()) {
+                                String vn = v.getName().toLowerCase();
+                                if (vn.contains("female") || vn.contains("woman") || vn.contains("girl")
+                                    || vn.contains("samantha") || vn.contains("zira")) {
+                                    tts.setVoice(v);
+                                    addLog("Selected voice: " + v.getName());
+                                    break;
+                                }
+                            }
+                        } catch (Exception e) { /* use default */ }
+                        addLog("TTS ready");
                         tts.setOnUtteranceProgressListener(new UtteranceProgressListener() {
                             @Override public void onStart(String uid) {
                                 ttsSpeaking = true;
@@ -630,18 +740,26 @@ public class MainActivity extends Activity {
             }
             recognizer.setRecognitionListener(new RecognitionListener() {
                 @Override public void onReadyForSpeech(Bundle p) { isListening = true; updateNotif("Listening..."); }
-                @Override public void onBeginningOfSpeech() { updateNotif("Heard you"); }
+                @Override public void onBeginningOfSpeech() { updateNotif("Heard you"); addLog("Heard speech"); }
                 @Override public void onRmsChanged(float rms) {}
                 @Override public void onBufferReceived(byte[] buf) {}
-                @Override public void onEndOfSpeech() { isListening = false; updateNotif("Processing..."); }
+                @Override public void onEndOfSpeech() { isListening = false; updateNotif("Processing..."); addLog("Speech ended"); }
                 @Override public void onError(int code) {
                     isListening = false;
+                    String err = "code " + code;
+                    if (code == SpeechRecognizer.ERROR_NO_MATCH) err = "no match";
+                    else if (code == SpeechRecognizer.ERROR_SPEECH_TIMEOUT) err = "timeout";
+                    else if (code == SpeechRecognizer.ERROR_NETWORK) err = "network";
+                    else if (code == SpeechRecognizer.ERROR_CLIENT) err = "client";
+                    addLog("Recognizer error: " + err);
                     if (!ttsSpeaking) handler.postDelayed(() -> startListening(), 500);
                 }
                 @Override public void onResults(Bundle res) {
                     ArrayList<String> matches = res.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION);
                     if (matches != null && !matches.isEmpty()) {
-                        processTranscript(matches.get(0).toLowerCase().trim());
+                        String text = matches.get(0).toLowerCase().trim();
+                        addLog("Recognized: " + text);
+                        processTranscript(text);
                     } else {
                         if (!ttsSpeaking) startListening();
                     }
@@ -669,6 +787,7 @@ public class MainActivity extends Activity {
                 updateNotif("Listening...");
             } catch (Exception e) {
                 Log.e(TAG, "Start fail", e);
+                addLog("Listen start error: " + e.getMessage());
                 handler.postDelayed(() -> startListening(), 2000);
             }
         }
@@ -680,6 +799,7 @@ public class MainActivity extends Activity {
             if (text.isEmpty()) { if (!ttsSpeaking) startListening(); return; }
 
             conv.turnCount++;
+            addLog("Processing: \"" + text + "\"");
 
             // ── Wake word detection ──
             if (!wakeWordDetected && !commandMode) {
@@ -822,8 +942,8 @@ public class MainActivity extends Activity {
             wakeTimeoutRunnable = () -> {
                 commandMode = false;
                 wakeWordDetected = false;
-                conv.startFresh();
                 wakeTimeoutRunnable = null;
+                addLog("Back to background listening (1min timeout)");
                 if (!ttsSpeaking) startListening();
             };
             handler.postDelayed(wakeTimeoutRunnable, WAKE_TIMEOUT_MS);
@@ -849,6 +969,7 @@ public class MainActivity extends Activity {
         private void executeIntent(String intentId, String rawText) {
             conv.lastIntent = intentId;
             Log.d(TAG, "Intent: " + intentId + " (" + rawText + ")");
+            addLog("Intent: " + intentId);
 
             switch (intentId) {
                 case "torch_on":
@@ -1408,6 +1529,22 @@ public class MainActivity extends Activity {
 
         @Override
         public int onStartCommand(Intent intent, int flags, int startId) {
+            if (intent != null && intent.hasExtra("text_command")) {
+                String cmd = intent.getStringExtra("text_command");
+                addLog("Text command: " + cmd);
+                // If awake and in command mode, process directly
+                if (commandMode || wakeWordDetected) {
+                    cancelWakeTimeout();
+                    processTranscript(cmd);
+                    handler.postDelayed(() -> endCommandMode(), 4000);
+                } else {
+                    // Treat as direct command (wake word not needed for typed commands)
+                    wakeWordDetected = true;
+                    commandMode = true;
+                    processTranscript(cmd);
+                    setWakeTimeout();
+                }
+            }
             return START_STICKY;
         }
 
