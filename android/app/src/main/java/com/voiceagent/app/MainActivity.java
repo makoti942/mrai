@@ -1288,9 +1288,10 @@ public class MainActivity extends Activity {
         private void takeScreenshot() {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
                 try {
-                    Intent i = ((android.media.projection.MediaProjectionManager)
-                            .getSystemService(MEDIA_PROJECTION_SERVICE))
-                            .createScreenCaptureIntent();
+                    android.media.projection.MediaProjectionManager mpm =
+                        (android.media.projection.MediaProjectionManager)
+                            getSystemService(Context.MEDIA_PROJECTION_SERVICE);
+                    Intent i = mpm.createScreenCaptureIntent();
                     i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
                     startActivity(i);
                     speak("Capturing");
