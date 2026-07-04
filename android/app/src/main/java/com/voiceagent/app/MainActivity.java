@@ -572,7 +572,7 @@ public class MainActivity extends Activity {
                         @Override public void onStart(String uid) {
                             ttsSpeaking = true;
                             updateNotif("Speaking...");
-                            if (recognizer != null) { try { recognizer.stop(); } catch (Exception e) {} }
+                            if (recognizer != null) { try { recognizer.stopListening(); } catch (Exception e) {} }
                         }
                         @Override public void onDone(String uid) {
                             ttsSpeaking = false;
@@ -841,8 +841,9 @@ public class MainActivity extends Activity {
                     speak("Volume down");
                     break;
                 case "volume_set": {
-                    Integer lvl = extractNumber(rawText);
-                    if (lvl != null) {
+                    String lvlStr = extractNumber(rawText);
+                    if (lvlStr != null) {
+                        int lvl = Integer.parseInt(lvlStr);
                         int mapped = Math.max(0, Math.min(maxVolume, lvl * maxVolume / 100));
                         audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, mapped, 0);
                         speak("Volume set to " + lvl);
@@ -973,9 +974,10 @@ public class MainActivity extends Activity {
                     break;
                 }
                 case "alarm": {
-                    Integer num = extractNumber(rawText);
-                    if (num != null) {
-                        Intent i = new Intent(Intent.ACTION_SET_ALARM);
+                    String numStr = extractNumber(rawText);
+                    if (numStr != null) {
+                        int num = Integer.parseInt(numStr);
+                        Intent i = new Intent(android.provider.AlarmClock.ACTION_SET_ALARM);
                         i.putExtra(android.provider.AlarmClock.EXTRA_HOUR, num);
                         i.putExtra(android.provider.AlarmClock.EXTRA_MINUTES, 0);
                         i.putExtra(android.provider.AlarmClock.EXTRA_SKIP_UI, false);
@@ -983,7 +985,7 @@ public class MainActivity extends Activity {
                         try { startActivity(i); speak("Setting alarm"); }
                         catch (Exception e) { speak("Opening alarm"); }
                     } else {
-                        Intent i = new Intent(Intent.ACTION_SET_ALARM);
+                        Intent i = new Intent(android.provider.AlarmClock.ACTION_SET_ALARM);
                         i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
                         try { startActivity(i); }
                         catch (Exception e) { speak("Alarm app not found"); }
