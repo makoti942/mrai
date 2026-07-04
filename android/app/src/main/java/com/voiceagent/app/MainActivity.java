@@ -99,7 +99,32 @@ public class MainActivity extends Activity {
 
     private TextView logView;
     private TextView statusView;
+    private static final int REQ_VOICE = 2001;
     private final Handler uiHandler = new Handler(Looper.getMainLooper());
+
+    private void sendTextCommand(String cmd) {
+        Intent svc = new Intent(this, VoiceCommandService.class);
+        svc.putExtra("text_command", cmd);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            startForegroundService(svc);
+        } else {
+            startService(svc);
+        }
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == REQ_VOICE && resultCode == RESULT_OK && data != null) {
+            ArrayList<String> matches = data.getStringArrayListExtra(
+                RecognizerIntent.EXTRA_RESULTS);
+            if (matches != null && !matches.isEmpty()) {
+                String text = matches.get(0);
+                VoiceCommandService.addLog("Google Voice: \"" + text + "\"");
+                sendTextCommand(text);
+            }
+        }
+    }
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -113,23 +138,32 @@ public class MainActivity extends Activity {
         EditText inputText = findViewById(R.id.inputText);
         Button sendBtn = findViewById(R.id.sendBtn);
 
+        // Mic button — launches Google's voice recognition activity directly
+        Button micBtn = findViewById(R.id.micBtn);
+        micBtn.setOnClickListener(v -> {
+            Intent voiceIntent = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
+            voiceIntent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
+            voiceIntent.putExtra(RecognizerIntent.EXTRA_LANGUAGE, "en-US");
+            voiceIntent.putExtra(RecognizerIntent.EXTRA_PROMPT, "Say a command...");
+            try {
+                startActivityForResult(voiceIntent, REQ_VOICE);
+                VoiceCommandService.addLog("Google voice UI launched");
+            } catch (Exception e) {
+                VoiceCommandService.addLog("Cannot launch voice: " + e.getMessage());
+            }
+        });
+
         sendBtn.setOnClickListener(v -> {
             String cmd = inputText.getText().toString().trim();
             if (!cmd.isEmpty()) {
                 inputText.setText("");
-                Intent svc = new Intent(this, VoiceCommandService.class);
-                svc.putExtra("text_command", cmd);
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    startForegroundService(svc);
-                } else {
-                    startService(svc);
-                }
+                sendTextCommand(cmd);
             }
         });
 
         // Enter key sends
         inputText.setOnEditorActionListener((v, actionId, event) -> {
-            if (actionId == android.view.inputmethod.EditorInfo.IME_ACTION_SEND) {
+            if (actionId == EditorInfo.IME_ACTION_SEND) {
                 sendBtn.performClick();
                 return true;
             }
