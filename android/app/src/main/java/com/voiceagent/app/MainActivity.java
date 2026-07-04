@@ -729,17 +729,37 @@ public class MainActivity extends Activity {
         // ─── Speech Recognizer ─────────────────────────────
 
         private void initRecognizer() {
+            // Diagnose available recognition services
+            try {
+                android.content.pm.PackageManager pm = getPackageManager();
+                Intent recIntent = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
+                java.util.List<android.content.pm.ResolveInfo> recServices =
+                    pm.queryIntentServices(recIntent, 0);
+                addLog("Found " + recServices.size() + " recognition services:");
+                for (android.content.pm.ResolveInfo ri : recServices) {
+                    addLog("  - " + ri.serviceInfo.packageName + "/" + ri.serviceInfo.name);
+                }
+            } catch (Exception e) {
+                addLog("Query rec services error: " + e.getMessage());
+            }
+
             if (!SpeechRecognizer.isRecognitionAvailable(this)) {
-                Log.w(TAG, "Speech recognition not available");
-                speak("Voice recognition not available. Install Google voice search.");
+                addLog("Speech recognition NOT available");
+                addLog("Install Google app or Google Play Services for voice input");
+                updateNotif("Voice unavailable — type commands");
+                recognizerError = true;
                 return;
             }
+            addLog("Speech recognition IS available");
             recognizer = SpeechRecognizer.createSpeechRecognizer(this);
             if (recognizer == null) {
-                Log.w(TAG, "Failed to create SpeechRecognizer");
-                speak("Speech engine unavailable. Please install Google services.");
+                addLog("Failed to create SpeechRecognizer (null)");
+                addLog("Try: Settings → Apps → Google → Clear cache, then reboot");
+                updateNotif("Voice unavailable — type commands");
+                recognizerError = true;
                 return;
             }
+            addLog("SpeechRecognizer created successfully");
             recognizer.setRecognitionListener(new RecognitionListener() {
                 @Override public void onReadyForSpeech(Bundle p) { isListening = true; updateNotif("Listening..."); }
                 @Override public void onBeginningOfSpeech() { updateNotif("Heard you"); addLog("Heard speech"); }
@@ -749,15 +769,25 @@ public class MainActivity extends Activity {
                 @Override public void onError(int code) {
                     isListening = false;
                     String err = "code " + code;
-                    if (code == SpeechRecognizer.ERROR_NO_MATCH) err = "no match";
-                    else if (code == SpeechRecognizer.ERROR_SPEECH_TIMEOUT) err = "timeout";
-                    else if (code == SpeechRecognizer.ERROR_NETWORK) err = "network";
-                    else if (code == SpeechRecognizer.ERROR_CLIENT) err = "client";
+                    if (code == SpeechRecognizer.ERROR_NO_MATCH) err = "ERROR_NO_MATCH — can't hear speech";
+                    else if (code == SpeechRecognizer.ERROR_SPEECH_TIMEOUT) err = "SPEECH_TIMEOUT — waited but no speech";
+                    else if (code == SpeechRecognizer.ERROR_NETWORK) err = "NETWORK — check internet";
+                    else if (code == SpeechRecognizer.ERROR_CLIENT) err = "CLIENT — app-side error";
+                    else if (code == SpeechRecognizer.ERROR_AUDIO) err = "AUDIO — mic issue";
+                    else if (code == SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS) err = "NO_PERMISSION";
+                    else if (code == SpeechRecognizer.ERROR_LANGUAGE_NOT_SUPPORTED) err = "LANGUAGE not supported";
+                    else if (code == SpeechRecognizer.ERROR_LANGUAGE_UNAVAILABLE) err = "LANGUAGE model not downloaded";
+                    else if (code == SpeechRecognizer.ERROR_RECOGNIZER_BUSY) err = "BUSY";
                     errorCount++;
-                    addLog("Recognizer error: " + err + " (#" + errorCount + ")");
+                    if (errorCount == 1) {
+                        addLog("Speech error: " + err);
+                        addLog("Make sure Google app has microphone permission and is the default voice input");
+                    } else {
+                        addLog("Retry #" + errorCount + ": " + err);
+                    }
                     if (errorCount > 10) {
-                        addLog("Too many errors — stopping voice retry. Use text input instead.");
-                        updateNotif("Voice unavailable — type commands");
+                        addLog("Stopping voice retry. Use text commands instead.");
+                        updateNotif("Voice unavailable — type commands below");
                         recognizerError = true;
                         return;
                     }
